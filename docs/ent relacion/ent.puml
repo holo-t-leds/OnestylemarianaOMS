@@ -1,0 +1,263 @@
+@startuml
+hide circle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam roundcorner 5
+
+'=====================================================
+' MODELO ENTIDAD-RELACIÓN (MER) — 20 TABLAS FÍSICAS
+' G.C.C. OneStyle Mariana (OMS)
+' 100% Sincronizado con database/schema.sql
+'=====================================================
+
+'-----------------------------------------------------
+' 1. MÓDULO DE SEGURIDAD, USUARIOS Y AUDITORÍA
+'-----------------------------------------------------
+
+entity "roles" as roles {
+    * id_rol : INT <<PK>>
+    --
+    nombre_rol : VARCHAR(50) <<UNIQUE>>
+}
+
+entity "usuarios" as usuarios {
+    * id_usuario : INT <<PK>>
+    --
+    * fk_id_rol : INT <<FK>>
+    nombre : VARCHAR(100)
+    apellido : VARCHAR(100)
+    email : VARCHAR(150) <<UNIQUE>>
+    contrasena : VARCHAR(255)
+    google_id : VARCHAR(255)
+    reset_token_hash : VARCHAR(255)
+    reset_token_expira : DATETIME
+    telefono : VARCHAR(20)
+    estado_usuario : BOOLEAN
+    fecha_registro : DATETIME
+}
+
+entity "auditoria" as auditoria {
+    * id_log : INT <<PK>>
+    --
+    * fk_id_usuario_accion : INT <<FK>>
+    tipo_accion : VARCHAR(100)
+    tabla_afectada : VARCHAR(100)
+    id_registro_afectado : INT
+    valor_anterior : TEXT
+    valor_nuevo : TEXT
+    fecha_accion : DATETIME
+}
+
+'-----------------------------------------------------
+' 2. MÓDULO DE CATÁLOGO, ATRIBUTOS E INVENTARIO
+'-----------------------------------------------------
+
+entity "categorias" as categorias {
+    * id_categoria : INT <<PK>>
+    --
+    nombre_categoria : VARCHAR(100) <<UNIQUE>>
+    descripcion_categoria : TEXT
+    estado : BOOLEAN
+}
+
+entity "tallas" as tallas {
+    * id_talla : INT <<PK>>
+    --
+    nombre_talla : VARCHAR(10) <<UNIQUE>>
+    estado : BOOLEAN
+}
+
+entity "colores" as colores {
+    * id_color : INT <<PK>>
+    --
+    nombre_color : VARCHAR(50) <<UNIQUE>>
+    codigo_hex : VARCHAR(10)
+    estado : BOOLEAN
+}
+
+entity "producto" as producto {
+    * id_producto : INT <<PK>>
+    --
+    * fk_id_categoria : INT <<FK>>
+    nombre_producto : VARCHAR(150)
+    descripcion_producto : TEXT
+    precio_detallista : DECIMAL(12,2)
+    url_imagen_principal : VARCHAR(255)
+    estado_visibilidad : BOOLEAN
+}
+
+entity "producto_imagen" as producto_imagen {
+    * id_imagen : INT <<PK>>
+    --
+    * fk_id_producto : INT <<FK>>
+    url_imagen : VARCHAR(255)
+    formato : VARCHAR(10)
+    es_principal : BOOLEAN
+    fecha_carga : DATETIME
+}
+
+entity "producto_atributo" as producto_atributo {
+    * id_variante : INT <<PK>>
+    --
+    * fk_id_producto : INT <<FK>>
+    * fk_id_talla : INT <<FK>>
+    * fk_id_color : INT <<FK>>
+    estado : BOOLEAN
+}
+
+entity "inventario" as inventario {
+    * id_inventario : INT <<PK>>
+    --
+    * fk_id_variante : INT <<FK>>
+    stock_real : INT
+    stock_reservado : INT
+    punto_reposicion : INT
+}
+
+'-----------------------------------------------------
+' 3. MÓDULO DE CARRITO DE COMPRAS
+'-----------------------------------------------------
+
+entity "carrito" as carrito {
+    * id_carrito : INT <<PK>>
+    --
+    * fk_id_usuario : INT <<FK>>
+    fecha_creacion : DATETIME
+}
+
+entity "detalle_carrito" as detalle_carrito {
+    * id_detalle_carrito : INT <<PK>>
+    --
+    * fk_id_carrito : INT <<FK>>
+    * fk_id_variante : INT <<FK>>
+    cantidad : INT
+    precio : DECIMAL(12,2)
+    subtotal : DECIMAL(12,2)
+    cantidad_reservada : INT
+    fecha_expiracion : DATETIME
+}
+
+'-----------------------------------------------------
+' 4. MÓDULO DE PEDIDOS, DESPACHO Y SEGUIMIENTO
+'-----------------------------------------------------
+
+entity "pedido" as pedido {
+    * id_pedido : INT <<PK>>
+    --
+    * fk_id_usuario : INT <<FK>>
+    fk_id_vendedora_asig : INT <<FK>>
+    estado_pedido : ENUM('Registrado', 'Confirmado', 'En Empaque', 'Despachado', 'Entregado', 'Cancelado')
+    fecha_pedido : DATETIME
+    fecha_entrega : DATETIME
+    total_pedido : DECIMAL(12,2)
+    url_comprobante_whatsapp : VARCHAR(255)
+}
+
+entity "detalle_pedido" as detalle_pedido {
+    * id_detalle_pedido : INT <<PK>>
+    --
+    * fk_id_pedido : INT <<FK>>
+    * fk_id_variante : INT <<FK>>
+    cantidad : INT
+    precio : DECIMAL(12,2)
+}
+
+entity "historial_pedido" as historial_pedido {
+    * id_historial : INT <<PK>>
+    --
+    * fk_id_pedido : INT <<FK>>
+    estado : VARCHAR(50)
+    fecha_hora : DATETIME
+}
+
+entity "domicilio" as domicilio {
+    * id_domicilio : INT <<PK>>
+    --
+    * fk_id_pedido : INT <<FK>>
+    direccion_envio : TEXT
+    barrio : VARCHAR(100)
+    ciudad : VARCHAR(100)
+    telefono : VARCHAR(20)
+    observaciones : TEXT
+}
+
+'-----------------------------------------------------
+' 5. MÓDULO DE SOPORTE, FAQ Y REPORTES
+'-----------------------------------------------------
+
+entity "categorias_faq" as categorias_faq {
+    * id_categoria : INT <<PK>>
+    --
+    nombre_categoria : VARCHAR(100)
+    estado : BOOLEAN
+}
+
+entity "faq" as faq {
+    * id_faq : INT <<PK>>
+    --
+    * id_categoria : INT <<FK>>
+    pregunta : VARCHAR(255)
+    respuesta : TEXT
+    estado : BOOLEAN
+    orden : INT
+    fecha_creacion : DATETIME
+    fecha_actualizacion : DATETIME
+    usuario_actualizacion : INT <<FK>>
+}
+
+entity "configuracion_soporte" as configuracion_soporte {
+    * id_contacto : INT <<PK>>
+    --
+    tipo_contacto : VARCHAR(50)
+    destino : VARCHAR(255)
+    horario_atencion : VARCHAR(255)
+    mensaje_predeterminado : TEXT
+    estado : BOOLEAN
+}
+
+entity "reporte" as reporte {
+    * id_reporte : INT <<PK>>
+    --
+    * id_usuario : INT <<FK>>
+    tipo_reporte : VARCHAR(150)
+    fecha_generacion : DATETIME
+    periodo_inicio : DATETIME
+    periodo_fin : DATETIME
+    descripcion : TEXT
+}
+
+'=====================================================
+' RELACIONES Y CARDINALIDADES (INTEGRIDAD REFERENCIAL)
+'=====================================================
+
+' Seguridad y Usuarios
+roles ||--o{ usuarios : "asigna perfil"
+usuarios ||--o{ auditoria : "registra traza de"
+
+' Catálogo y Variantes
+categorias ||--o{ producto : "clasifica"
+producto ||--o{ producto_imagen : "posee galería"
+producto ||--o{ producto_atributo : "descompone en"
+tallas ||--o{ producto_atributo : "aplica dimensión"
+colores ||--o{ producto_atributo : "aplica tonalidad"
+producto_atributo ||--|| inventario : "controla stock físico"
+
+' Carrito de Compras
+usuarios ||--o{ carrito : "inicia sesión con"
+carrito ||--o{ detalle_carrito : "contiene ítems"
+producto_atributo ||--o{ detalle_carrito : "reserva existencias"
+
+' Pedidos y Logística
+usuarios ||--o{ pedido : "realiza como clienta"
+usuarios ||--o{ pedido : "atiende como vendedora"
+pedido ||--o{ detalle_pedido : "desglosa líneas"
+producto_atributo ||--o{ detalle_pedido : "factura ítem de"
+pedido ||--o{ historial_pedido : "cronología de estados"
+pedido ||--|| domicilio : "despacha hacia"
+
+' Soporte, FAQ y Reportes
+categorias_faq ||--o{ faq : "agrupa temática"
+usuarios ||--o{ faq : "mantiene/edita"
+usuarios ||--o{ reporte : "emite y exporta"
+
+@enduml

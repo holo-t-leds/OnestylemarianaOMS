@@ -1,0 +1,213 @@
+/* ===========================================================
+   OneStyleMariana — Componentes de UI reutilizables
+   Usa EXCLUSIVAMENTE los tokens de marca definidos en styles.css
+   (--bg, --bg-alt, --ink, --ink-soft, --line, --gold, --gold-dark, --gold-light).
+   Solo se añaden tokens auxiliares de estado, sombras y transiciones.
+   =========================================================== */
+
+:root {
+  --shadow-sm: 0 1px 2px rgba(23, 20, 15, .06), 0 1px 3px rgba(23, 20, 15, .04);
+  --shadow-md: 0 6px 18px rgba(23, 20, 15, .08), 0 2px 6px rgba(23, 20, 15, .05);
+  --shadow-lg: 0 18px 40px rgba(23, 20, 15, .14);
+  --ease: .18s cubic-bezier(.4, 0, .2, 1);
+
+  --danger: #A31F2D;          /* mismo rojo carmesí de la paleta de producto */
+  --danger-soft: #FBEFF0;
+  --success: #3F6B4A;
+  --success-soft: #EEF5EF;
+  --warning-soft: #FBF5E3;    /* derivado de --gold-light */
+  --info-soft: #F1F3F7;
+}
+
+/* ---------- Foco accesible global ---------- */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ---------- Botones: transiciones y estado de carga ---------- */
+.btn-osm,
+.osm-btn {
+  transition: background-color var(--ease), color var(--ease), border-color var(--ease),
+              box-shadow var(--ease), transform var(--ease), opacity var(--ease);
+}
+.btn-osm:active:not(:disabled),
+.osm-btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-osm:disabled,
+.osm-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.osm-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: .5em;
+  vertical-align: -.125em;
+  border: .15em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: osm-spin .7s linear infinite;
+}
+@keyframes osm-spin { to { transform: rotate(360deg); } }
+
+.osm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .5rem 1rem;
+  font: 500 .8rem 'Jost', sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill, 9999px);
+  cursor: pointer;
+}
+.osm-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-dark); box-shadow: var(--shadow-sm); }
+.osm-btn--primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.osm-btn--primary:hover:not(:disabled) { background: var(--gold-dark); border-color: var(--gold-dark); color: var(--bg); }
+.osm-btn--gold { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.osm-btn--gold:hover:not(:disabled) { background: var(--gold-dark); border-color: var(--gold-dark); color: var(--bg); }
+.osm-btn--danger { color: var(--danger); border-color: var(--danger); }
+.osm-btn--danger:hover:not(:disabled) { background: var(--danger); color: var(--bg); border-color: var(--danger); }
+.osm-btn--whatsapp { background: var(--bg); color: var(--ink); border-color: var(--line); }
+.osm-btn--whatsapp:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-dark); }
+.osm-btn--sm { padding: .3rem .75rem; font-size: .72rem; }
+.osm-btn--icon { padding: .35rem .55rem; }
+.osm-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+
+/* ---------- Tarjetas ---------- */
+.osm-card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--ease), border-color var(--ease), transform var(--ease);
+}
+.osm-card--hover:hover { box-shadow: var(--shadow-md); border-color: var(--gold-light); transform: translateY(-1px); }
+.osm-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: 1rem 1.25rem; border-bottom: 1px solid var(--line);
+}
+.osm-card__title { margin: 0; font: 600 1.05rem 'Playfair Display', serif; color: var(--ink); }
+.osm-card__body { padding: 1.25rem; }
+
+/* ---------- Insignias de estado ---------- */
+.osm-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .2rem .6rem; font: 500 .7rem 'Jost', sans-serif;
+  letter-spacing: .06em; text-transform: uppercase;
+  border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+}
+.osm-badge--neutral { background: var(--bg-alt); color: var(--ink-soft); border-color: var(--line); }
+.osm-badge--gold    { background: var(--warning-soft); color: var(--gold-dark); border-color: var(--gold-light); }
+.osm-badge--info    { background: var(--info-soft); color: var(--ink); border-color: var(--line); }
+.osm-badge--success { background: var(--success-soft); color: var(--success); border-color: #CFE0D2; }
+.osm-badge--danger  { background: var(--danger-soft); color: var(--danger); border-color: #EFC9CD; }
+
+/* ---------- Campos de formulario con validación inline ---------- */
+.osm-field { margin-bottom: 1rem; }
+.osm-field label {
+  display: block; margin-bottom: .35rem;
+  font: 500 .72rem 'Jost', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft);
+}
+.osm-input,
+.osm-select,
+.osm-textarea {
+  width: 100%; padding: .6rem .75rem;
+  font: 400 .9rem 'Jost', sans-serif; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+  transition: border-color var(--ease), box-shadow var(--ease), background-color var(--ease);
+}
+.osm-input:hover,
+.osm-select:hover,
+.osm-textarea:hover { border-color: var(--gold-light); }
+.osm-input:focus,
+.osm-select:focus,
+.osm-textarea:focus {
+  outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184, 145, 46, .18);
+}
+.osm-field.is-invalid .osm-input,
+.osm-field.is-invalid .osm-select,
+.osm-field.is-invalid .osm-textarea,
+.is-invalid.osm-input {
+  background: var(--danger-soft); border-color: var(--danger);
+}
+.osm-field.is-invalid .osm-input:focus { box-shadow: 0 0 0 3px rgba(163, 31, 45, .15); }
+.osm-field__error {
+  min-height: 0; margin-top: .3rem; font: 400 .78rem 'Jost', sans-serif; color: var(--danger);
+}
+.osm-field__hint { margin-top: .3rem; font: 400 .75rem 'Jost', sans-serif; color: var(--ink-soft); }
+
+/* ---------- Toasts ---------- */
+.osm-toasts {
+  position: fixed; top: 1rem; right: 1rem; z-index: 2000;
+  display: flex; flex-direction: column; gap: .6rem;
+  width: min(380px, calc(100vw - 2rem)); pointer-events: none;
+}
+.osm-toast {
+  display: flex; align-items: flex-start; gap: .75rem; pointer-events: auto;
+  padding: .85rem 1rem; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-left-width: 4px; border-radius: calc(var(--radius) * 2);
+  box-shadow: var(--shadow-lg);
+  animation: osm-toast-in .22s ease-out both;
+}
+.osm-toast.is-leaving { animation: osm-toast-out .18s ease-in both; }
+.osm-toast__icon { font-size: 1.1rem; line-height: 1.2; }
+.osm-toast__body { flex: 1; min-width: 0; }
+.osm-toast__title { margin: 0; font: 600 .85rem 'Jost', sans-serif; }
+.osm-toast__msg { margin: .1rem 0 0; font: 400 .85rem 'Jost', sans-serif; color: var(--ink-soft); word-wrap: break-word; }
+.osm-toast__close {
+  border: 0; background: transparent; color: var(--ink-soft); font-size: 1.1rem; line-height: 1;
+  cursor: pointer; padding: 0 .15rem; transition: color var(--ease);
+}
+.osm-toast__close:hover { color: var(--ink); }
+.osm-toast--success { border-left-color: var(--success); } .osm-toast--success .osm-toast__icon { color: var(--success); }
+.osm-toast--error   { border-left-color: var(--danger); }  .osm-toast--error .osm-toast__icon   { color: var(--danger); }
+.osm-toast--warning { border-left-color: var(--gold); }    .osm-toast--warning .osm-toast__icon { color: var(--gold-dark); }
+.osm-toast--info    { border-left-color: var(--ink); }
+@keyframes osm-toast-in  { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes osm-toast-out { to { opacity: 0; transform: translateX(24px); } }
+
+/* ---------- Skeletons ---------- */
+.osm-skel {
+  display: block; min-height: .9rem; border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--bg-alt) 25%, var(--line) 37%, var(--bg-alt) 63%);
+  background-size: 400% 100%;
+  animation: osm-shimmer 1.3s ease infinite;
+}
+.osm-skel--media { height: 100%; aspect-ratio: 3 / 4; }
+.osm-skel--w75 { width: 75%; }
+.osm-skel--w45 { width: 45%; }
+.osm-skel--block { height: 6.5rem; }
+@keyframes osm-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+/* ---------- Estado vacío / error ---------- */
+.osm-empty { padding: 2.5rem 1rem; text-align: center; color: var(--ink-soft); }
+.osm-empty i { display: block; margin-bottom: .6rem; font-size: 2rem; color: var(--gold-light); }
+.osm-empty strong { display: block; margin-bottom: .25rem; font: 600 1rem 'Playfair Display', serif; color: var(--ink); }
+
+/* ---------- Interruptor (visibilidad de producto) ---------- */
+.osm-switch { position: relative; display: inline-block; width: 38px; height: 22px; }
+.osm-switch input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+.osm-switch__track {
+  position: absolute; inset: 0; background: var(--line); border-radius: 999px;
+  transition: background-color var(--ease);
+}
+.osm-switch__track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  background: var(--bg); border-radius: 50%; box-shadow: var(--shadow-sm);
+  transition: transform var(--ease);
+}
+.osm-switch input:checked + .osm-switch__track { background: var(--gold); }
+.osm-switch input:checked + .osm-switch__track::after { transform: translateX(16px); }
+.osm-switch input:focus-visible + .osm-switch__track { outline: 2px solid var(--gold); outline-offset: 2px; }
+.osm-switch input:disabled { cursor: wait; }
+.osm-switch input:disabled + .osm-switch__track { opacity: .55; }
+
+/* ---------- Respeto a preferencias de movimiento reducido ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .osm-toast, .osm-toast.is-leaving, .osm-skel, .osm-spinner { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .osm-btn, .btn-osm, .osm-card { transition: none; }
+}

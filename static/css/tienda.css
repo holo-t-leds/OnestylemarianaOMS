@@ -1,0 +1,93 @@
+/* ===========================================================
+   OneStyleMariana — Estilos de Vista SSR (/tienda) sin inline CSS
+   =========================================================== */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8fafc;
+  margin: 0;
+  padding: 20px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  width: 280px;
+  overflow: hidden;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.badge {
+  background: #e0e7ff;
+  color: #4338ca;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  width: fit-content;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: bold;
+  margin: 10px 0 5px;
+  color: #1e293b;
+}
+
+.price {
+  font-size: 20px;
+  font-weight: bold;
+  color: #059669;
+  margin-bottom: 15px;
+}
+
+.form-label-cant {
+  font-size: 13px;
+}
+
+.form-input-cant {
+  width: 50px;
+  padding: 4px;
+  margin-bottom: 10px;
+}
+
+.btn-comprar {
+  background: #d97706;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  width: 100%;
+}
+
+.btn-comprar:hover {
+  background: #b45309;
+}
+
+.alert {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}

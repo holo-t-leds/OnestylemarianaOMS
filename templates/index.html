@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OneStyleMariana — Exclusividad Importada</title>
+
+<!-- Bootstrap 5 (con Subresource Integrity SHA-384) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<!-- Bootstrap Icons (con Subresource Integrity SHA-384) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" integrity="sha384-XGjxtQfXaH2tnPFa9x+ruJTuLE3Aa6LhHSWRr1XeTyhezb4abCG4ccI5AkVDxqC+" crossorigin="anonymous">
+<!-- Tipografías y CSS propio -->
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<!-- ============================= 1. BARRA SUPERIOR DE ANUNCIO (STITCH SHELL) ============================= -->
+<div class="top-announcement">
+  <div class="container top-announcement__inner">
+    <p class="mb-0">
+      ¿Buscas <span class="top-announcement__highlight">asesoría personalizada de talla</span> o envío express en Colombia?
+      <span class="d-none d-md-inline top-announcement__sep">|</span>
+      <span class="d-block d-sm-inline top-announcement__highlight">Atención exclusiva Concierge</span>
+    </p>
+    <a class="btn-pill-champagne" href="https://api.whatsapp.com/send?phone=573001234567" target="_blank" rel="noopener noreferrer" id="topBarWhatsappBtn">
+      <span>WhatsApp Concierge →</span>
+    </a>
+  </div>
+</div>
+
+<!-- ============================= 2. HEADER PRINCIPAL STICKY ============================= -->
+<header class="site-header sticky-top">
+  <nav class="navbar navbar-expand-lg py-3">
+    <div class="container">
+
+      <a class="navbar-brand d-flex align-items-center gap-3" href="#/" data-nav="home">
+        <span class="brand-emblem">
+          <img src="img/logo.jpg" alt="Logo oficial OneStyleMariana">
+        </span>
+        <span class="brand-text-wrap">
+          <span class="brand-name">OneStyleMariana</span>
+          <span class="brand-sub">EXCLUSIVIDAD IMPORTADA</span>
+        </span>
+      </a>
+
+      <button class="navbar-toggler border-0 shadow-none" type="button"
+              data-bs-toggle="collapse" data-bs-target="#mainNav" aria-label="Menú">
+        <i class="bi bi-list fs-3"></i>
+      </button>
+
+      <div class="collapse navbar-collapse" id="mainNav">
+        <ul class="navbar-nav mx-auto mb-2 mb-lg-0 gap-lg-4">
+          <li class="nav-item"><a class="nav-link nav-route" href="#/" data-route="home">Inicio</a></li>
+          <li class="nav-item"><a class="nav-link nav-route" href="#/catalogo" data-route="catalogo">Colecciones</a></li>
+          <li class="nav-item"><a class="nav-link" href="#/catalogo" id="navNovedadesLink">Novedades</a></li>
+          <li class="nav-item"><a class="nav-link nav-route" href="#/seguimiento" data-route="seguimiento">Seguimiento</a></li>
+          <li class="nav-item"><a class="nav-link nav-route" href="#/ayuda" data-route="ayuda">Centro de Ayuda</a></li>
+        </ul>
+
+        <div class="d-flex align-items-center gap-2 header-actions">
+          <a class="icon-btn" href="#/buscar" aria-label="Buscar prendas"><i class="bi bi-search"></i></a>
+
+          <div class="dropdown">
+            <button class="icon-btn d-flex align-items-center gap-2" type="button" id="accountBtn" aria-label="Mi cuenta">
+              <i class="bi bi-person" id="accountIcon"></i>
+              <span class="account-label d-none d-lg-inline" id="accountLabel">Iniciar Sesión</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end account-menu" id="accountMenu">
+              <li class="px-3 py-2 border-bottom">
+                <small class="text-muted">Hola,</small>
+                <div class="fw-semibold" id="accountMenuName">—</div>
+                <small class="text-muted" id="accountMenuRole"></small>
+              </li>
+              <li><button class="dropdown-item" type="button" id="openProfileBtn">Mi Perfil</button></li>
+              <li><a class="dropdown-item" href="#/seguimiento">Mis Pedidos</a></li>
+              <li class="d-none" id="omsMenuItem"><a class="dropdown-item fw-semibold" href="#/admin" id="openOmsBtn"><i class="bi bi-kanban me-1"></i>Panel de Administración</a></li>
+              <li><button class="dropdown-item" type="button" id="logoutBtn">Cerrar Sesión</button></li>
+            </ul>
+          </div>
+
+          <button class="icon-btn position-relative" type="button" id="wishlistBtn" aria-label="Lista de deseos">
+            <i class="bi bi-heart"></i>
+            <span class="cart-badge d-none" id="wishlistCount">0</span>
+          </button>
+
+          <button class="icon-btn position-relative" type="button" id="cartBtn" aria-label="Bolsa de compras">
+            <i class="bi bi-bag"></i>
+            <span class="cart-badge" id="cartCount">0</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </nav>
+</header>
+
+<!-- ============================= INICIO (STITCH EDITORIAL LUXURY) ============================= -->
+<section class="view" id="view-home">
+  <!-- 3. Hero Editorial Asimétrico -->
+  <div class="hero-editorial">
+    <div class="container">
+      <div class="row align-items-center g-5">
+        <div class="col-lg-6">
+          <div class="eyebrow">
+            <span>BOUTIQUE DE LUJO IMPORTADO</span>
+            <span class="eyebrow-rule" aria-hidden="true"></span>
+          </div>
+          <h1 class="hero-editorial__title">
+            Elegancia Atemporal para la
+            <span class="d-block text-bronze-italic mt-1">Mujer Moderna</span>
+          </h1>
+          <p class="hero-editorial__subtitle">
+            Descubre corsets arquitectónicos, bodies de encaje francés y prendas importadas diseñadas para resaltar tu silueta.
+          </p>
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <a class="btn btn-osm btn-gold" href="#/catalogo">Explorar Colección →</a>
+            <a class="btn btn-osm btn-outline-dark" href="#homeNovedadesSection" id="heroLookbookBtn">
+              <i class="bi bi-play-circle"></i><span>Ver Lookbook 2026</span>
+            </a>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="hero-editorial__frame">
+            <img src="img/corset-canela.jpg" alt="Modelo luciendo corset estructurado de alta costura en tonos marfil, canela y dorado">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Barra Flotante de 5 Beneficios -->
+  <div class="container benefits-strip-wrap">
+    <div class="benefits-strip" aria-label="Beneficios exclusivos OneStyleMariana">
+      <div class="benefit-item">
+        <i class="bi bi-truck" aria-hidden="true"></i>
+        <div>
+          <div class="benefit-item__title">Envío Express</div>
+          <div class="benefit-item__sub">A toda Colombia</div>
+        </div>
+      </div>
+      <div class="benefit-item">
+        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+        <div>
+          <div class="benefit-item__title">Cambios Fáciles</div>
+          <div class="benefit-item__sub">Garantía de talla</div>
+        </div>
+      </div>
+      <div class="benefit-item">
+        <i class="bi bi-shield-check" aria-hidden="true"></i>
+        <div>
+          <div class="benefit-item__title">Reserva 15 Min</div>
+          <div class="benefit-item__sub">Stock garantizado en carrito</div>
+        </div>
+      </div>
+      <div class="benefit-item">
+        <i class="bi bi-gem" aria-hidden="true"></i>
+        <div>
+          <div class="benefit-item__title">Curaduría Única</div>
+          <div class="benefit-item__sub">Ediciones limitadas</div>
+        </div>
+      </div>
+      <div class="benefit-item">
+        <i class="bi bi-headset" aria-hidden="true"></i>
+        <div>
+          <div class="benefit-item__title">Concierge 24/7</div>
+          <div class="benefit-item__sub">Atención vía WhatsApp</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Sección "Explorar por Categoría" (Sincronizada con GET /api/productos/categorias) -->
+  <div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+      <div class="d-flex align-items-center gap-3">
+        <h2 class="section-title mb-0">Explorar por Categoría</h2>
+        <span class="eyebrow-rule d-none d-sm-inline-block" aria-hidden="true"></span>
+      </div>
+      <a class="link-osm" href="#/catalogo">Ver Todo el Catálogo →</a>
+    </div>
+    <div class="row g-3 g-md-4" id="homeCategoriesGrid"></div>
+  </div>
+
+  <!-- 6. Sección Asimétrica "Novedades 2026" -->
+  <div class="featured-section" id="homeNovedadesSection">
+    <div class="container">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-3">
+          <div class="eyebrow mb-2">
+            <span>COLECCIÓN DESTACADA</span>
+            <span class="eyebrow-rule" aria-hidden="true"></span>
+          </div>
+          <h2 class="section-title mb-3">
+            Novedades <span class="text-bronze-italic">2026</span>
+          </h2>
+          <p class="text-muted small mb-4">
+            Piezas importadas de edición limitada con silueta arquitectónica, encaje francés y acabados de alta costura.
+          </p>
+          <a class="btn btn-osm btn-dark" href="#/catalogo">Ver Colección →</a>
+        </div>
+        <div class="col-lg-9">
+          <div class="row g-4" id="homeRecsGrid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Banner Editorial Ancho Redondeado -->
+  <div class="container py-5">
+    <div class="seasonal-banner">
+      <div class="row align-items-center g-4">
+        <div class="col-md-4 d-none d-md-block">
+          <span class="eyebrow">
+            <span>COLECCIÓN ESTACIONAL</span>
+            <span class="eyebrow-rule" aria-hidden="true"></span>
+          </span>
+        </div>
+        <div class="col-md-5 text-center">
+          <h2 class="section-title mb-3">
+            Temporada <span class="text-bronze-italic">Primavera / Verano</span>
+          </h2>
+          <span class="seasonal-banner__badge" role="status">
+            <i class="bi bi-clock-history text-bronze-italic"></i>
+            <span>Reserva Activa de Inventario</span>
+          </span>
+        </div>
+        <div class="col-md-3 text-center text-md-end">
+          <a class="btn-pill-champagne px-4 py-2" href="#/catalogo">Comprar Ahora →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= CATÁLOGO COMPLETO ============================= -->
+<section class="view" id="view-catalogo">
+  <div class="catalog-header-strip">
+    <div class="container d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
+      <div>
+        <div class="eyebrow mb-1"><span>CATÁLOGO OFICIAL</span></div>
+        <h1 class="section-title mb-0">
+          Colección Primavera / Verano 2026 — <span class="text-bronze-italic">Exclusividad Importada</span>
+        </h1>
+      </div>
+      <span class="text-muted small tabular-nums" id="catalogResultsCount">Mostrando 0 resultados</span>
+    </div>
+  </div>
+
+  <div class="container py-5" id="catGridTop">
+    <div class="row g-4 g-lg-5 align-items-start">
+
+      <!-- Sidebar Izquierdo con Filtros -->
+      <aside class="col-lg-3">
+        <div class="catalog-sidebar-card">
+          <div class="filter-group">
+            <div class="filter-label">Tipo de Prenda</div>
+            <div class="d-grid gap-1" id="catalogCatFilter">
+              <button class="filter-opt active" data-cat="todos">Todas las Colecciones</button>
+              <button class="filter-opt" data-cat="corsets">Corsets</button>
+              <button class="filter-opt" data-cat="blusas">Blusas</button>
+              <button class="filter-opt" data-cat="bodies">Bodies</button>
+              <button class="filter-opt" data-cat="pantalones">Pantalones</button>
+              <button class="filter-opt" data-cat="vestidos">Vestidos</button>
+              <button class="filter-opt" data-cat="conjuntos">Conjuntos</button>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <div class="filter-label">Talla</div>
+            <div class="d-flex flex-wrap gap-2" id="catalogSizeFilter">
+              <button class="size-chip" data-size="XS">XS</button>
+              <button class="size-chip" data-size="S">S</button>
+              <button class="size-chip" data-size="M">M</button>
+              <button class="size-chip" data-size="L">L</button>
+              <button class="size-chip" data-size="XL">XL</button>
+            </div>
+          </div>
+
+          <div class="filter-group border-0 mb-0 pb-0">
+            <div class="filter-label">Paleta de Color</div>
+            <div class="d-flex flex-wrap align-items-center gap-2" id="catalogColorFilter">
+              <button class="color-pick color-swatch-todos active" data-color="" title="Todos"></button>
+              <button class="color-pick color-swatch-negro" data-color="negro" title="Negro (N)"></button>
+              <button class="color-pick color-swatch-blanco" data-color="blanco" title="Blanco (B)"></button>
+              <button class="color-pick color-swatch-rojo" data-color="rojo" title="Rojo (R)"></button>
+              <button class="color-pick color-swatch-rosado" data-color="rosado" title="Rosado (ROS)"></button>
+              <button class="color-pick color-swatch-marfil" data-color="marfil" title="Marfil"></button>
+              <button class="color-pick color-swatch-azul" data-color="azul" title="Azul"></button>
+              <button class="color-pick color-swatch-canela" data-color="canela" title="Canela (C)"></button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Grilla de 3 Columnas -->
+      <div class="col-lg-9">
+        <div class="row g-4" id="catalogGrid"></div>
+
+        <div class="empty-block text-center d-none" id="catalogEmptyWrap">
+          <div class="empty-icon mx-auto"><i class="bi bi-inboxes"></i></div>
+          <h3 id="catalogEmptyTitle">Próximamente nuevas unidades</h3>
+          <p id="catalogEmptyDesc">Estamos renovando nuestra selección. Muy pronto podrás descubrir piezas únicas.</p>
+          <button class="btn btn-osm btn-outline-dark" id="resetFiltersBtn">Quitar Filtros</button>
+        </div>
+
+        <div class="banner-strip mt-5" id="catalogBannerStrip"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================= DETALLE PRODUCTO ============================= -->
+<section class="view" id="view-pdp">
+  <div class="container py-5">
+    <div class="row g-5">
+      <div class="col-lg-6">
+        <div class="pdp-main mb-3" id="pdpMain"></div>
+        <div class="row g-2" id="pdpThumbs"></div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="crumb d-flex justify-content-between align-items-center" id="pdpCrumbWrap">
+          <span id="pdpCrumb"></span>
+          <span class="text-muted" id="pdpSku"></span>
+        </div>
+        <h1 class="pdp-name" id="pdpName"></h1>
+        <div class="pdp-price" id="pdpPrice"></div>
+        <p class="pdp-desc" id="pdpDesc"></p>
+
+        <div class="stock-note"><i class="bi bi-exclamation-circle"></i> <span id="pdpStock"></span></div>
+
+        <div class="field-label d-flex justify-content-between">
+          <span>Seleccionar talla</span><a href="#" class="link-osm">Guía de tallas</a>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-4" id="pdpSizes"></div>
+
+        <div class="field-label" id="pdpColorLabel"></div>
+        <div class="d-flex gap-2 mb-4" id="pdpColors"></div>
+
+        <button class="btn btn-osm btn-gold w-100 mb-2" id="addToCartBtn">
+          Añadir al Carrito de Compras <i class="bi bi-arrow-right"></i>
+        </button>
+        <button class="btn btn-osm btn-outline-dark w-100">Lista de Deseos</button>
+
+        <div class="accordion accordion-flush mt-4" id="pdpAccordion">
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pdpCare">
+                Composición y Cuidados
+              </button>
+            </h2>
+            <div id="pdpCare" class="accordion-collapse collapse" data-bs-parent="#pdpAccordion">
+              <div class="accordion-body">
+                Prenda importada. Lavar a mano en agua fría, no usar blanqueador, secar a la sombra
+                y planchar a baja temperatura. Guardar en lugar seco lejos de la luz directa.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-5 pt-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="section-title mb-0">La Curaduría</h2>
+        <a class="link-osm" href="#/catalogo">Ver Todo</a>
+      </div>
+      <div class="row g-4" id="curationGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= CHECKOUT ============================= -->
+<section class="view" id="view-checkout">
+  <div class="container py-5">
+    <div class="row g-5">
+      <div class="col-lg-7">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="section-title mb-0">Su Selección</h2>
+          <span class="badge bg-dark-subtle text-dark d-none" id="checkoutTtlBadge">
+            <i class="bi bi-clock-history me-1"></i>Reserva activa: <strong id="checkoutTtlTimer">15:00</strong>
+          </span>
+        </div>
+        <div id="cartItemsWrap"></div>
+
+        <h2 class="section-title mt-5 mb-4">Envío y Contacto en Colombia</h2>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label-osm" for="shipName">Nombre completo</label>
+            <input type="text" class="form-control form-control-osm" id="shipName" name="nombre_receptor" placeholder="Juan Pablo Rodríguez">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label-osm" for="shipEmail">Correo electrónico</label>
+            <input type="email" class="form-control form-control-osm" id="shipEmail" name="email" placeholder="juanpablo@onestylemariana.co">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label-osm" for="shipAddress">Dirección de envío</label>
+            <input type="text" class="form-control form-control-osm" id="shipAddress" name="direccion_envio" placeholder="Calle 93 # 12-54, Apto 402">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label-osm" for="shipBarrio">Barrio</label>
+            <input type="text" class="form-control form-control-osm" id="shipBarrio" name="barrio" placeholder="Chicó Reservado">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label-osm" for="shipPhone">Teléfono (WhatsApp)</label>
+            <input type="tel" class="form-control form-control-osm" id="shipPhone" name="telefono" placeholder="+57 310 123 4567">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label-osm" for="shipCity">Ciudad</label>
+            <input type="text" class="form-control form-control-osm" id="shipCity" name="ciudad" placeholder="Bogotá D.C.">
+          </div>
+          <div class="col-12">
+            <label class="form-label-osm" for="shipNotes">Observaciones de entrega (opcional)</label>
+            <input type="text" class="form-control form-control-osm" id="shipNotes" name="observaciones" placeholder="Entregar en portería principal">
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="order-summary">
+          <h3 class="summary-title">Resumen de la Orden</h3>
+          <div class="sum-row"><span>Subtotal</span><span id="sumSubtotal">$0 COP</span></div>
+          <div class="sum-row"><span>Envío Nacional (Express)</span><span id="sumShip">$0 COP</span></div>
+          <div class="sum-row"><span>Tasas de Importación</span><span id="sumTax">$0 COP</span></div>
+          <div class="sum-total"><span>Total</span><span class="amount" id="sumTotal">$0 COP</span></div>
+
+          <div class="alert alert-danger py-2 small d-none" id="checkoutError"></div>
+
+          <div class="notice">
+            <i class="bi bi-info-circle"></i>
+            <span><b>Confirmación vía WhatsApp.</b> Al completar el pedido enviaremos un recibo
+            detallado a nuestro concierge para finalizar tu atención personalizada en Colombia.</span>
+          </div>
+
+          <button class="btn btn-osm btn-gold w-100" id="completeOrderBtn">Completar Pedido</button>
+          <div class="secure-note"><i class="bi bi-lock"></i> Pago Seguro y Privado</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= BÚSQUEDA ============================= -->
+<section class="view" id="view-buscar">
+  <div class="container py-5">
+    <div class="search-box mx-auto mb-5">
+      <input type="text" class="form-control" id="searchInput" name="termino" placeholder="Buscar prendas, colecciones…">
+      <button class="btn btn-osm btn-gold" id="searchBtn">Buscar</button>
+    </div>
+
+    <div id="searchResultsWrap">
+      <div class="results-heading" id="searchHeading"></div>
+      <div class="results-count" id="searchCount"></div>
+      <div class="row g-4" id="searchGrid"></div>
+    </div>
+
+    <div class="empty-block text-center d-none" id="searchEmptyWrap">
+      <div class="empty-icon mx-auto"><i class="bi bi-search"></i></div>
+      <h3 id="noResultsHeading">No encontramos resultados</h3>
+      <p>Lamentamos no poder encontrar lo que buscas. Explora nuestras novedades o intenta con otros términos.</p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a class="btn btn-osm btn-dark" href="#/catalogo">Ver Colecciones</a>
+        <button class="btn btn-osm btn-outline-dark" id="clearSearchBtn">Limpiar Búsqueda</button>
+      </div>
+    </div>
+
+    <div class="mt-5 pt-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="section-title mb-0">Recomendaciones para Ti</h2>
+        <a class="link-osm" href="#/">Ver Todas las Novedades <i class="bi bi-arrow-right"></i></a>
+      </div>
+      <div class="row g-4" id="searchRecsGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= SEGUIMIENTO ============================= -->
+<section class="view" id="view-seguimiento">
+  <div class="container py-5">
+    <div class="text-center mb-5">
+      <h2 class="section-title">Seguimiento de Pedido</h2>
+      <p class="text-muted">Ingresa los datos de tu compra para conocer el estado de tu envío.</p>
+    </div>
+
+    <div class="track-wrap mx-auto">
+      <!-- Pantalla de Confirmación de Orden y Botón Concierge WhatsApp (RF-PED-001) -->
+      <div class="order-summary mb-4 d-none" id="orderConfirmCard">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="badge bg-dark" id="confirmOrderCode">ORD-00001</span>
+          <span class="small text-muted">Reserva consolidada en inventario</span>
+        </div>
+        <h3 class="summary-title mb-2">¡Tu Orden ha sido Registrada!</h3>
+        <p class="small text-muted mb-3">
+          Hemos apartado tus prendas y generado tu comprobante oficial. Haz clic en el botón inferior para
+          finalizar la coordinación de pago y despacho personalizado con nuestra asesora en WhatsApp.
+        </p>
+        <div class="mb-3 small" id="confirmOrderItems"></div>
+        <div class="sum-total mb-3"><span>Total Consolidado</span><span class="amount" id="confirmOrderTotal">$0 COP</span></div>
+        <a class="btn btn-osm btn-gold w-100" href="#" target="_blank" rel="noopener noreferrer" id="whatsappConciergeBtn">
+          <i class="bi bi-whatsapp me-2"></i>Finalizar pedido vía WhatsApp
+        </a>
+      </div>
+
+      <div class="track-form mb-4">
+        <div class="alert alert-danger py-2 small d-none" id="trackError"></div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label-osm" for="trackOrderId">Número de pedido</label>
+            <input type="text" class="form-control form-control-osm" id="trackOrderId" name="id_pedido" placeholder="ORD-00001">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label-osm" for="trackContact">Correo o teléfono</label>
+            <input type="text" class="form-control form-control-osm" id="trackContact" name="contacto" placeholder="tucorreo@ejemplo.com">
+          </div>
+        </div>
+        <button class="btn btn-osm btn-gold w-100" id="trackBtn">Rastrear Pedido</button>
+      </div>
+
+      <div class="track-result d-none" id="trackResult">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="track-id" id="trackResultId">Pedido ORD-00001</div>
+          <span class="badge bg-dark" id="trackCurrentState">Registrado</span>
+        </div>
+        <div class="track-eta mb-4" id="trackResultEta">Entrega estimada: 3 a 5 días hábiles</div>
+
+        <div class="steps" id="trackSteps">
+          <div class="step done" data-step="1">
+            <div class="step-dot"><i class="bi bi-receipt"></i></div>
+            <div class="step-label">Registrado</div>
+          </div>
+          <div class="step" data-step="2">
+            <div class="step-dot"><i class="bi bi-check-lg"></i></div>
+            <div class="step-label">Confirmado</div>
+          </div>
+          <div class="step" data-step="3">
+            <div class="step-dot"><i class="bi bi-box-seam"></i></div>
+            <div class="step-label">En Empaque</div>
+          </div>
+          <div class="step" data-step="4">
+            <div class="step-dot"><i class="bi bi-truck"></i></div>
+            <div class="step-label">Despachado</div>
+          </div>
+          <div class="step" data-step="5">
+            <div class="step-dot"><i class="bi bi-bag-check"></i></div>
+            <div class="step-label">Entregado</div>
+          </div>
+        </div>
+
+        <div class="track-row"><span>Transportista</span><span>Envíos Élite Colombia</span></div>
+        <div class="track-row"><span>Dirección de entrega</span><span id="trackAddress">Calle 93 # 12-54, Bogotá D.C.</span></div>
+        <div class="track-row"><span>Última actualización</span><span id="trackLastUpdate">Hoy — Pedido registrado en sistema OMS</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= MI CUENTA (RF-SEG-007, RF-SEG-008, RF-SEG-016, RF-SEG-017) ============================= -->
+<section class="view" id="view-cuenta">
+  <div class="container account-page">
+    <h1 class="account-title text-center">Mi cuenta</h1>
+
+    <div id="accountForms">
+      <div class="row account-grid mx-auto">
+
+        <!-- Formulario de Inicio de Sesión (RF-SEG-008) -->
+        <div class="col-lg-6 mb-5 mb-lg-0 pe-lg-5">
+          <h3 class="account-heading">Iniciar sesión</h3>
+          <div class="alert alert-danger py-2 small d-none" id="loginError" role="alert"></div>
+
+          <form id="loginForm" novalidate>
+            <div class="uline-field">
+              <label for="loginUser">Correo electrónico</label>
+              <input type="email" id="loginUser" name="email" autocomplete="email" required>
+            </div>
+            <div class="uline-field">
+              <label for="loginPassword">Contraseña</label>
+              <input type="password" id="loginPassword" name="contrasena" autocomplete="current-password" minlength="8" required>
+            </div>
+
+            <button class="btn btn-osm btn-dark w-100 mt-4" type="submit" id="loginBtn">Iniciar Sesión</button>
+          </form>
+          <a class="account-forgot" href="#" id="forgotLink">Olvidé mi contraseña</a>
+        </div>
+
+        <!-- Formulario de Auto-registro de Clienta (RF-SEG-007) -->
+        <div class="col-lg-6 ps-lg-5">
+          <h3 class="account-heading">Crea una Cuenta</h3>
+          <div class="alert alert-danger py-2 small d-none" id="registerError" role="alert"></div>
+
+          <form id="registerForm" novalidate>
+            <div class="uline-field">
+              <label for="regName">Nombre</label>
+              <input type="text" id="regName" name="nombre" autocomplete="given-name" required>
+            </div>
+            <div class="uline-field">
+              <label for="regApellido">Apellido</label>
+              <input type="text" id="regApellido" name="apellido" autocomplete="family-name" required>
+            </div>
+            <div class="uline-field">
+              <label for="regEmail">Correo electrónico</label>
+              <input type="email" id="regEmail" name="email" autocomplete="email" required>
+            </div>
+            <div class="uline-field">
+              <label for="regTelefono">Teléfono</label>
+              <input type="tel" id="regTelefono" name="telefono" autocomplete="tel">
+            </div>
+            <div class="uline-field">
+              <label for="regPassword">Contraseña (mín. 8 caracteres)</label>
+              <input type="password" id="regPassword" name="contrasena" autocomplete="new-password" minlength="8" required>
+            </div>
+            <div class="uline-field">
+              <label for="regPassword2">Confirma la Contraseña</label>
+              <input type="password" id="regPassword2" name="confirmar_contrasena" autocomplete="new-password" minlength="8" required>
+            </div>
+
+            <button class="btn btn-osm btn-dark w-100 mt-4" type="submit" id="registerBtn">Regístrate</button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="text-center d-none" id="authSuccess">
+      <div class="empty-icon mx-auto"><i class="bi bi-check-lg"></i></div>
+      <h2 class="section-title" id="authSuccessTitle">¡Bienvenida!</h2>
+      <p class="text-muted mb-4" id="authSuccessSub">Tu cuenta está lista.</p>
+      <a class="btn btn-osm btn-dark" href="#/">Continuar</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= CENTRO DE AYUDA Y FAQ (RF-FAQ-001 a RF-FAQ-011) ============================= -->
+<section class="view" id="view-ayuda">
+  <div class="container py-5">
+    <div class="text-center mb-5">
+      <h2 class="section-title">Centro de Ayuda y Preguntas Frecuentes</h2>
+      <p class="text-muted">Resuelve tus inquietudes sobre envíos, tallas, pagos y cambios o contáctanos directamente.</p>
+    </div>
+
+    <div class="row g-5">
+      <div class="col-lg-7">
+        <div class="search-box mb-4">
+          <input type="text" class="form-control" id="faqSearchInput" name="q" placeholder="Buscar por palabra clave (ej. envíos, Nequi, cambios, tallas)…">
+          <button class="btn btn-osm btn-gold" type="button" id="faqSearchBtn">Filtrar</button>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mb-4" id="faqCatFilter">
+          <button type="button" class="size-chip active" data-faq-cat="todas">Todas</button>
+        </div>
+
+        <div class="accordion accordion-flush" id="faqAccordion"></div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="order-summary">
+          <h3 class="summary-title">Atención al Cliente y Soporte</h3>
+          <p class="small text-muted mb-3">
+            Envíanos tu solicitud y abriremos un ticket prioritario, o comunícate en tiempo real por nuestro canal oficial de WhatsApp.
+          </p>
+
+          <div class="d-grid gap-2 mb-4">
+            <a class="btn btn-osm btn-gold" href="https://api.whatsapp.com/send?phone=573001234567" target="_blank" rel="noopener noreferrer" id="faqWhatsappBtn">
+              <i class="bi bi-whatsapp me-2"></i>Atención Directa vía WhatsApp
+            </a>
+            <a class="btn btn-osm btn-outline-dark" href="mailto:concierge@onestylemariana.co" id="faqEmailLink">
+              <i class="bi bi-envelope me-2"></i>concierge@onestylemariana.co
+            </a>
+          </div>
+
+          <hr class="my-4">
+          <h4 class="h6 text-uppercase fw-semibold mb-3">Formulario de Contacto</h4>
+          <div class="alert alert-danger py-2 small d-none" id="supportError" role="alert"></div>
+          <div class="alert alert-success py-2 small d-none" id="supportSuccess" role="status"></div>
+
+          <form id="supportContactForm" novalidate>
+            <div class="mb-3">
+              <label class="form-label-osm" for="supName">Nombre completo</label>
+              <input type="text" class="form-control form-control-osm" id="supName" name="nombre" placeholder="Mariana Restrepo" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-osm" for="supEmail">Correo electrónico</label>
+              <input type="email" class="form-control form-control-osm" id="supEmail" name="email" placeholder="tu@correo.co" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-osm" for="supOrderCode">Código de pedido (opcional)</label>
+              <input type="text" class="form-control form-control-osm" id="supOrderCode" name="codigo_orden" placeholder="ORD-00001">
+            </div>
+            <div class="mb-3">
+              <label class="form-label-osm" for="supSubject">Asunto</label>
+              <input type="text" class="form-control form-control-osm" id="supSubject" name="asunto" placeholder="Asesoría de talla / Estado de envío" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label-osm" for="supMessage">Mensaje (mín. 10 caracteres)</label>
+              <textarea class="form-control form-control-osm" id="supMessage" name="mensaje" rows="3" placeholder="Cuéntanos cómo podemos ayudarte…" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-osm btn-dark w-100" id="sendSupportBtn">Enviar Solicitud de Soporte</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= PANEL ADMINISTRATIVO SPA (#/admin) ============================= -->
+<section class="view" id="view-admin">
+  <div class="container">
+    <div class="adm-layout">
+
+      <!-- Barra lateral de navegación administrativa -->
+      <aside class="adm-sidebar">
+        <div class="adm-sidebar__who d-flex align-items-center gap-2">
+          <span class="brand-emblem">
+            <img src="img/logo.jpg" alt="Logo oficial OneStyleMariana">
+          </span>
+          <div class="min-w-0">
+            <h4 class="adm-sidebar__name text-truncate" id="admUserName">Administradora</h4>
+            <p class="adm-sidebar__role" id="admUserRole">Administradora</p>
+          </div>
+        </div>
+        <ul class="adm-nav" id="admSidebarNav">
+          <li>
+            <a href="#/admin" data-adm-nav="resumen" class="active">
+              <i class="bi bi-grid-1x2"></i><span>Resumen y KPIs</span>
+            </a>
+          </li>
+          <li>
+            <a href="#/admin/pedidos" data-adm-nav="pedidos">
+              <i class="bi bi-kanban"></i><span>Pedidos (OMS)</span>
+              <span class="adm-nav__count d-none" id="admNavPendingBadge">0</span>
+            </a>
+          </li>
+          <li>
+            <a href="#/admin/catalogo" data-adm-nav="catalogo">
+              <i class="bi bi-tags"></i><span>Catálogo</span>
+              <span class="adm-nav__count d-none" id="admNavCatalogBadge">0</span>
+            </a>
+          </li>
+          <li>
+            <a href="#/admin/inventario" data-adm-nav="inventario">
+              <i class="bi bi-boxes"></i><span>Inventario y Stock</span>
+              <span class="adm-nav__count d-none" id="admNavAlertsBadge">0</span>
+            </a>
+          </li>
+          <li>
+            <a href="#/admin/perfil" data-adm-nav="perfil">
+              <i class="bi bi-person-gear"></i><span>Mi Cuenta y Clave</span>
+            </a>
+          </li>
+        </ul>
+        <div class="adm-sidebar__foot">
+          <i class="bi bi-patch-check-fill" aria-hidden="true"></i>
+          <span>OMS Sincronizado</span>
+        </div>
+      </aside>
+
+      <!-- Área principal de subpaneles -->
+      <main class="adm-main">
+
+        <!-- 1. Subpanel: Resumen y Métricas Consolidadas -->
+        <div class="adm-panel active" id="adm-panel-resumen">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>PANEL ADMINISTRATIVO UNIFICADO</span></div>
+              <h1 class="adm-title">Resumen Operativo OMS</h1>
+              <p class="adm-sub">Indicadores consolidados de pedidos OMS, ingresos y alertas de inventario en tiempo real.</p>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span class="osm-badge osm-badge--neutral">
+                <span class="osm-status-dot" aria-hidden="true"></span>
+                <span>Tienda en Línea Activa</span>
+              </span>
+              <a href="#/admin/pedidos" class="osm-btn osm-btn--primary"><i class="bi bi-kanban"></i> Ver Pedidos</a>
+              <a href="#/admin/catalogo" class="osm-btn osm-btn--gold"><i class="bi bi-plus-lg"></i> Gestionar Catálogo</a>
+            </div>
+          </div>
+
+          <div class="adm-kpis">
+            <a href="#/admin/pedidos" class="osm-card osm-card--interactive adm-kpi adm-kpi--gold">
+              <p class="adm-kpi__label">Pedidos por Atender</p>
+              <p class="adm-kpi__value" id="admKpiPending">0</p>
+              <p class="adm-kpi__meta">Registrados, Confirmados o En Empaque</p>
+            </a>
+            <div class="osm-card adm-kpi">
+              <p class="adm-kpi__label">Ventas Consolidadas</p>
+              <p class="adm-kpi__value" id="admKpiRevenue">$0 COP</p>
+              <p class="adm-kpi__meta">Excluye órdenes canceladas</p>
+            </div>
+            <a href="#/admin/inventario" class="osm-card osm-card--interactive adm-kpi adm-kpi--alert">
+              <p class="adm-kpi__label">Alertas de Stock</p>
+              <p class="adm-kpi__value" id="admKpiAlerts">0</p>
+              <p class="adm-kpi__meta">Variantes agotadas o bajo umbral</p>
+            </a>
+            <a href="#/admin/catalogo" class="osm-card osm-card--interactive adm-kpi">
+              <p class="adm-kpi__label">Catálogo Activo</p>
+              <p class="adm-kpi__value" id="admKpiCatalog">0 / 0</p>
+              <p class="adm-kpi__meta">Prendas visibles en tienda</p>
+            </a>
+          </div>
+
+          <div class="adm-grid-2 mb-3">
+            <div class="osm-card">
+              <div class="osm-card__head">
+                <h2 class="osm-card__title">Distribución por Estado (FSM)</h2>
+                <span class="osm-badge">Tiempo Real</span>
+              </div>
+              <div class="osm-card__body">
+                <div class="adm-bars" id="admStateBars"></div>
+              </div>
+            </div>
+
+            <div class="osm-card">
+              <div class="osm-card__head">
+                <h2 class="osm-card__title">Alertas Prioritarias de Inventario</h2>
+                <a href="#/admin/inventario" class="link-osm small">Ajustar Stock <i class="bi bi-arrow-right"></i></a>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Variante SKU</th>
+                      <th>Disponible</th>
+                      <th>Umbral</th>
+                      <th class="t-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admLowStockBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="osm-card">
+            <div class="osm-card__head">
+              <h2 class="osm-card__title">Pedidos Recientes</h2>
+              <a href="#/admin/pedidos" class="link-osm small">Ver todos <i class="bi bi-arrow-right"></i></a>
+            </div>
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Cliente / Ciudad</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th class="t-right">Gestión</th>
+                  </tr>
+                </thead>
+                <tbody id="admRecentOrdersBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Subpanel: Gestión de Pedidos OMS con Paginación en Servidor -->
+        <div class="adm-panel" id="adm-panel-pedidos">
+          <div class="adm-head">
+            <div>
+              <h1 class="adm-title">Gestión de Pedidos (OMS)</h1>
+              <p class="adm-sub">Búsqueda en vivo, filtrado por estado, contacto directo vía WhatsApp y Máquina de Estados Secuencial.</p>
+            </div>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-toolbar">
+              <div class="adm-search">
+                <i class="bi bi-search"></i>
+                <input type="search" class="osm-input" id="admOrderSearch" placeholder="Buscar por código ORD-XXXXX, cliente, correo, teléfono o ciudad…">
+              </div>
+              <select class="osm-select" id="admOrderStateFilter" aria-label="Filtrar por estado">
+                <option value="">Todos los estados</option>
+                <option value="Registrado">Registrado</option>
+                <option value="Confirmado">Confirmado</option>
+                <option value="En Empaque">En Empaque</option>
+                <option value="Despachado">Despachado</option>
+                <option value="Entregado">Entregado</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+            </div>
+
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Código / Fecha</th>
+                    <th>Cliente y Contacto</th>
+                    <th>Prendas</th>
+                    <th>Total</th>
+                    <th>Estado (FSM)</th>
+                    <th class="t-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="admOrdersBody"></tbody>
+              </table>
+            </div>
+
+            <div class="adm-pager">
+              <span id="admOrdersPageInfo">Mostrando 0 pedidos</span>
+              <div class="adm-pager__nav">
+                <button type="button" class="osm-btn osm-btn--sm" id="admOrdersPrev" disabled><i class="bi bi-chevron-left"></i> Anterior</button>
+                <span class="adm-pager__page" id="admOrdersPageLabel">Página 1 de 1</span>
+                <button type="button" class="osm-btn osm-btn--sm" id="admOrdersNext" disabled>Siguiente <i class="bi bi-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Subpanel: Catálogo Integrado en SPA -->
+        <div class="adm-panel" id="adm-panel-catalogo">
+          <div class="adm-head">
+            <div>
+              <h1 class="adm-title">Administración de Catálogo</h1>
+              <p class="adm-sub">Crea nuevas prendas, agrega variantes de talla/color y controla la visibilidad pública sin recargar la página.</p>
+            </div>
+            <button type="button" class="osm-btn osm-btn--gold" id="admOpenNewProductBtn">
+              <i class="bi bi-plus-lg"></i> Nueva Prenda
+            </button>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-toolbar">
+              <div class="adm-search">
+                <i class="bi bi-search"></i>
+                <input type="search" class="osm-input" id="admCatSearch" placeholder="Buscar prenda por nombre, descripción o categoría…">
+              </div>
+              <select class="osm-select" id="admCatFilterCat" aria-label="Filtrar por categoría">
+                <option value="">Todas las categorías</option>
+              </select>
+              <select class="osm-select" id="admCatFilterState" aria-label="Filtrar por visibilidad">
+                <option value="">Todos los estados</option>
+                <option value="activo">Visibles</option>
+                <option value="oculto">Ocultos</option>
+              </select>
+            </div>
+
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Prenda</th>
+                    <th>Categoría</th>
+                    <th>Precio Base</th>
+                    <th>Stock Total</th>
+                    <th>Visibilidad</th>
+                    <th class="t-right">Variantes</th>
+                  </tr>
+                </thead>
+                <tbody id="admCatalogBody"></tbody>
+              </table>
+            </div>
+
+            <div class="adm-pager">
+              <span id="admCatalogPageInfo">Mostrando 0 prendas</span>
+              <div class="adm-pager__nav">
+                <button type="button" class="osm-btn osm-btn--sm" id="admCatalogPrev" disabled><i class="bi bi-chevron-left"></i> Anterior</button>
+                <span class="adm-pager__page" id="admCatalogPageLabel">Página 1 de 1</span>
+                <button type="button" class="osm-btn osm-btn--sm" id="admCatalogNext" disabled>Siguiente <i class="bi bi-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Subpanel: Inventario y Ajustes por SKU -->
+        <div class="adm-panel" id="adm-panel-inventario">
+          <div class="adm-head">
+            <div>
+              <h1 class="adm-title">Control de Inventario por SKU</h1>
+              <p class="adm-sub">Ajusta existencias físicas por variante respetando las reservas temporales activas en carritos.</p>
+            </div>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>Prenda / Variante</th>
+                    <th>Precio</th>
+                    <th>Stock Físico / Reservado</th>
+                    <th>Disponible</th>
+                    <th class="t-right">Ajustar Stock Físico</th>
+                  </tr>
+                </thead>
+                <tbody id="admInventoryBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Subpanel: Perfil de la Administradora y Seguridad -->
+        <div class="adm-panel" id="adm-panel-perfil">
+          <div class="adm-head">
+            <div>
+              <h1 class="adm-title">Mi Cuenta y Seguridad</h1>
+              <p class="adm-sub">Actualiza tus datos de contacto o cambia tu contraseña con validación en tiempo real.</p>
+            </div>
+          </div>
+
+          <div class="adm-grid-2">
+            <div class="osm-card">
+              <div class="osm-card__head">
+                <h2 class="osm-card__title">Datos de Contacto</h2>
+              </div>
+              <div class="osm-card__body">
+                <form id="admProfileForm" novalidate>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admProfNombre">Nombre</label>
+                    <input type="text" class="osm-input" id="admProfNombre" name="nombre" required>
+                  </div>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admProfApellido">Apellido</label>
+                    <input type="text" class="osm-input" id="admProfApellido" name="apellido" required>
+                  </div>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admProfEmail">Correo electrónico</label>
+                    <input type="email" class="osm-input" id="admProfEmail" name="email" required>
+                  </div>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admProfTelefono">Teléfono / WhatsApp</label>
+                    <input type="tel" class="osm-input" id="admProfTelefono" name="telefono" required>
+                  </div>
+                  <button type="submit" class="osm-btn osm-btn--gold w-100 mt-2" id="admSaveProfileBtn">
+                    Guardar Cambios de Perfil
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div class="osm-card">
+              <div class="osm-card__head">
+                <h2 class="osm-card__title">Cambiar Contraseña</h2>
+              </div>
+              <div class="osm-card__body">
+                <form id="admPasswordForm" novalidate>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admPwdCurrent">Contraseña actual</label>
+                    <input type="password" class="osm-input" id="admPwdCurrent" name="contrasena_actual" autocomplete="current-password" required>
+                  </div>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admPwdNew">Nueva contraseña (mín. 8 caracteres)</label>
+                    <input type="password" class="osm-input" id="admPwdNew" name="nueva_password" autocomplete="new-password" required>
+                  </div>
+                  <div class="osm-field">
+                    <label class="osm-label" for="admPwdConfirm">Confirmar nueva contraseña</label>
+                    <input type="password" class="osm-input" id="admPwdConfirm" name="confirmar_password" autocomplete="new-password" required>
+                  </div>
+                  <button type="submit" class="osm-btn osm-btn--primary w-100 mt-2" id="admSavePasswordBtn">
+                    Actualizar Contraseña
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 404 ============================= -->
+<section class="view" id="view-404">
+  <div class="container py-5">
+    <div class="empty-block text-center">
+      <div class="empty-icon mx-auto"><i class="bi bi-search"></i></div>
+      <h3>Página no encontrada</h3>
+      <p>El enlace que intentas abrir no existe o ya no está disponible.</p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a class="btn btn-osm btn-gold" href="#/">Volver al Inicio</a>
+        <a class="btn btn-osm btn-outline-dark" href="#/catalogo">Ver Colecciones</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= 8. FRANJA INFERIOR DE SELLOS DE MARCA (STITCH) ============================= -->
+<section class="brand-pillars" aria-label="Pilares de calidad OneStyleMariana">
+  <div class="container">
+    <div class="brand-pillars__grid">
+      <div class="brand-pillar">
+        <i class="bi bi-award" aria-hidden="true"></i>
+        <span>Calidad Importada</span>
+      </div>
+      <div class="brand-pillar">
+        <i class="bi bi-compass" aria-hidden="true"></i>
+        <span>Diseño Arquitectónico</span>
+      </div>
+      <div class="brand-pillar">
+        <i class="bi bi-rulers" aria-hidden="true"></i>
+        <span>Tallas XS a XL</span>
+      </div>
+      <div class="brand-pillar">
+        <i class="bi bi-truck" aria-hidden="true"></i>
+        <span>Rastreo OMS en Vivo</span>
+      </div>
+      <div class="brand-pillar">
+        <i class="bi bi-star" aria-hidden="true"></i>
+        <span>Satisfacción Garantizada</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= FOOTER ============================= -->
+<footer class="site-footer text-center">
+  <div class="container">
+    <div class="brand-emblem mx-auto mb-3">
+      <img src="img/logo.jpg" alt="Logo oficial OneStyleMariana">
+    </div>
+    <div class="footer-word">ONESTYLEMARIANA</div>
+    <ul class="footer-links list-unstyled d-flex flex-wrap justify-content-center gap-4">
+      <li><a href="#/">Sostenibilidad</a></li>
+      <li><a href="#/">Herencia</a></li>
+      <li><a href="#/ayuda">Guía de Cuidado</a></li>
+      <li><a href="#/ayuda">Contacto y FAQ</a></li>
+      <li><a href="#/">Privacidad</a></li>
+      <li><a href="#/seguimiento">Seguimiento</a></li>
+    </ul>
+    <div class="footer-social d-flex justify-content-center gap-3">
+      <a href="#/" aria-label="Sitio"><i class="bi bi-globe"></i></a>
+      <a href="#/ayuda" aria-label="Correo"><i class="bi bi-envelope"></i></a>
+      <a href="#/catalogo" aria-label="Compartir"><i class="bi bi-share"></i></a>
+    </div>
+    <div class="copyright">© 2026 ONESTYLE MARIANA — EXCLUSIVIDAD IMPORTADA. TODOS LOS DERECHOS RESERVADOS.</div>
+  </div>
+</footer>
+
+<!-- ============================= CARRITO LATERAL (offcanvas Bootstrap) ============================= -->
+<div class="offcanvas offcanvas-end cart-drawer" tabindex="-1" id="cartDrawer">
+  <div class="offcanvas-header border-bottom">
+    <div class="w-100">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="offcanvas-title mb-0" id="cartDrawerTitle">Tu Bolsa (0)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+      </div>
+      <div class="ttl-pill-badge d-none" id="cartDrawerTtlBadge">
+        <i class="bi bi-clock-history"></i>
+        <span>Reserva temporal activa: <strong id="cartDrawerTtlTimer">15:00</strong></span>
+      </div>
+    </div>
+  </div>
+  <div class="offcanvas-body" id="drawerItems"></div>
+  <div class="drawer-foot border-top">
+    <div class="alert alert-danger py-2 small d-none" id="cartDrawerError"></div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span>Subtotal</span><b id="drawerSubtotal">$0 COP</b>
+    </div>
+    <a class="btn btn-osm btn-gold w-100" href="#/checkout" id="drawerCheckoutBtn">Finalizar Compra →</a>
+    <div class="drawer-note">Envío e impuestos calculados en el checkout</div>
+  </div>
+</div>
+
+<!-- ============================= LISTA DE DESEOS LATERAL (#wishlistDrawer) ============================= -->
+<div class="offcanvas offcanvas-end cart-drawer" tabindex="-1" id="wishlistDrawer">
+  <div class="offcanvas-header border-bottom">
+    <h5 class="offcanvas-title mb-0">Tu Lista de Deseos</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+  </div>
+  <div class="offcanvas-body" id="wishlistItemsWrap"></div>
+</div>
+
+<!-- ============================= MODAL GUÍA DE MEDIDAS (#sizeGuideModal) ============================= -->
+<div class="modal fade" id="sizeGuideModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <div class="eyebrow mb-1"><span>CONFECCIÓN IMPORTADA</span></div>
+      <h3 class="section-title mb-2">Guía de Medidas Oficial</h3>
+      <p class="text-muted small mb-3">Medidas anatómicas en centímetros para corsetería estructurada, bodies y denim de tiro alto.</p>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Talla</th>
+              <th>Busto (cm)</th>
+              <th>Cintura (cm)</th>
+              <th>Cadera (cm)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>XS</strong></td><td>80 – 84</td><td>60 – 64</td><td>86 – 90</td></tr>
+            <tr><td><strong>S</strong></td><td>85 – 89</td><td>65 – 69</td><td>91 – 95</td></tr>
+            <tr><td><strong>M</strong></td><td>90 – 95</td><td>70 – 75</td><td>96 – 101</td></tr>
+            <tr><td><strong>L</strong></td><td>96 – 102</td><td>76 – 82</td><td>102 – 108</td></tr>
+            <tr><td><strong>XL</strong></td><td>103 – 109</td><td>83 – 89</td><td>109 – 115</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= VISTA RÁPIDA (modal Bootstrap) ============================= -->
+<div class="modal fade" id="quickViewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content qv-content">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <div class="row g-0">
+        <div class="col-md-6">
+          <div class="qv-image" id="qvImage"></div>
+        </div>
+        <div class="col-md-6">
+          <div class="qv-info">
+            <h3 id="qvName"></h3>
+            <div class="qv-price" id="qvPrice"></div>
+            <div class="qv-color d-flex align-items-center gap-2">
+              <span class="color-dot" id="qvColorDot"></span><span id="qvColorName"></span>
+            </div>
+            <p class="qv-desc" id="qvDesc"></p>
+            <div class="field-label">Seleccionar talla</div>
+            <div class="d-flex flex-wrap gap-2 mb-4" id="qvSizes"></div>
+            <button class="btn btn-osm btn-gold w-100" id="qvAddBtn">Añadir al Carrito <i class="bi bi-arrow-right"></i></button>
+            <a class="qv-full-link" href="#" id="qvFullLink">Ver detalle completo</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL RECUPERACIÓN DE CONTRASEÑA (RF-SEG-016 / RF-SEG-017) ============================= -->
+<div class="modal fade" id="recoveryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-3">Recuperar Contraseña</h3>
+      <div class="alert alert-danger py-2 small d-none" id="recoveryError"></div>
+      <div class="alert alert-success py-2 small d-none" id="recoverySuccess"></div>
+
+      <form id="forgotPasswordForm" novalidate>
+        <div class="uline-field">
+          <label for="recEmail">Correo electrónico registrado</label>
+          <input type="email" id="recEmail" name="email" required>
+        </div>
+        <button type="submit" class="btn btn-osm btn-dark w-100" id="sendRecoveryBtn">Enviar Token Temporal</button>
+      </form>
+
+      <form id="resetPasswordForm" class="mt-4 pt-3 border-top d-none" novalidate>
+        <div class="uline-field">
+          <label for="recToken">Token de recuperación</label>
+          <input type="text" id="recToken" name="token" required>
+        </div>
+        <div class="uline-field">
+          <label for="recNewPassword">Nueva contraseña (mín. 8 caracteres)</label>
+          <input type="password" id="recNewPassword" name="nueva_password" minlength="8" required>
+        </div>
+        <button type="submit" class="btn btn-osm btn-gold w-100" id="confirmResetBtn">Restablecer Contraseña</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL MI PERFIL (RF-SEG-010 / RF-SEG-011) ============================= -->
+<div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-3">Mi Perfil</h3>
+      <div class="alert alert-danger py-2 small d-none" id="profileError"></div>
+      <div class="alert alert-success py-2 small d-none" id="profileSuccess"></div>
+
+      <form id="profileForm" novalidate>
+        <div class="uline-field">
+          <label for="profNombre">Nombre</label>
+          <input type="text" id="profNombre" name="nombre" required>
+        </div>
+        <div class="uline-field">
+          <label for="profApellido">Apellido</label>
+          <input type="text" id="profApellido" name="apellido" required>
+        </div>
+        <div class="uline-field">
+          <label for="profEmail">Correo electrónico</label>
+          <input type="email" id="profEmail" name="email" required>
+        </div>
+        <div class="uline-field">
+          <label for="profTelefono">Teléfono</label>
+          <input type="tel" id="profTelefono" name="telefono">
+        </div>
+        <button type="submit" class="btn btn-osm btn-gold w-100" id="saveProfileBtn">Actualizar Perfil</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL PANEL OMS DE PEDIDOS (RF-PED-002 / RF-PED-004) ============================= -->
+<div class="modal fade" id="omsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div>
+          <h3 class="section-title mb-0">Panel OMS — Gestión de Pedidos</h3>
+          <small class="text-muted">Control de Máquina de Estados Secuencial (RF-PED-002) y Consolidado de Ventas (RF-PED-004)</small>
+        </div>
+        <div class="d-flex gap-3">
+          <div class="border px-3 py-2 text-end">
+            <small class="text-muted d-block">Total Pedidos</small>
+            <strong id="omsKpiCount">0</strong>
+          </div>
+          <div class="border px-3 py-2 text-end">
+            <small class="text-muted d-block">Ventas Consolidadas</small>
+            <strong id="omsKpiRevenue">$0 COP</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert alert-danger py-2 small d-none" id="omsError"></div>
+      <div class="alert alert-success py-2 small d-none" id="omsSuccess"></div>
+
+      <div class="table-responsive">
+        <table class="table align-middle small">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Cliente / Entrega</th>
+              <th>Prendas</th>
+              <th>Total</th>
+              <th>Estado Actual (FSM)</th>
+              <th class="text-end">Transición Permitida</th>
+            </tr>
+          </thead>
+          <tbody id="omsTableBody">
+            <tr><td colspan="6" class="text-center text-muted py-4">Sin pedidos registrados.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= DRAWER DETALLE DE PEDIDO Y FSM (#admOrderDrawer) ============================= -->
+<div class="offcanvas offcanvas-end adm-drawer" tabindex="-1" id="admOrderDrawer">
+  <div class="offcanvas-header border-bottom">
+    <div class="d-flex align-items-center gap-2">
+      <h5 class="offcanvas-title mb-0" id="admDrawerOrderCode">Pedido ORD-00001</h5>
+      <span id="admDrawerOrderBadge"></span>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+  </div>
+  <div class="offcanvas-body" id="admDrawerOrderBody"></div>
+  <div class="adm-drawer-foot" id="admDrawerOrderFoot"></div>
+</div>
+
+<!-- ============================= MODAL NUEVA PRENDA (#admProductModal) ============================= -->
+<div class="modal fade" id="admProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-3">Registrar Nueva Prenda</h3>
+      <form id="admProductForm" novalidate>
+        <div class="row g-3">
+          <div class="col-md-8 osm-field mb-0">
+            <label class="osm-label" for="admProdNombre">Nombre de la prenda</label>
+            <input type="text" class="osm-input" id="admProdNombre" name="nombre" placeholder="Ej. Corset Imperial Satinado" required>
+          </div>
+          <div class="col-md-4 osm-field mb-0">
+            <label class="osm-label" for="admProdCategoria">Categoría</label>
+            <select class="osm-select" id="admProdCategoria" name="fk_id_categoria"></select>
+          </div>
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admProdDesc">Descripción</label>
+            <input type="text" class="osm-input" id="admProdDesc" name="descripcion" placeholder="Confección importada, detalles arquitectónicos" required>
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admProdPrecio">Precio base (COP)</label>
+            <input type="number" min="1000" step="1000" class="osm-input" id="admProdPrecio" name="precio_base" placeholder="145000" required>
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admProdImg">Ruta de imagen (opcional)</label>
+            <input type="text" class="osm-input" id="admProdImg" name="imagen_url" placeholder="img/corset-canela.jpg">
+          </div>
+          <div class="col-md-4 osm-field mb-0">
+            <label class="osm-label" for="admProdSku">SKU inicial</label>
+            <input type="text" class="osm-input" id="admProdSku" name="sku_inicial" placeholder="OSM-IMP-S-NEG" required>
+          </div>
+          <div class="col-md-3 osm-field mb-0">
+            <label class="osm-label" for="admProdTalla">Talla inicial</label>
+            <select class="osm-select" id="admProdTalla" name="fk_id_talla"></select>
+          </div>
+          <div class="col-md-3 osm-field mb-0">
+            <label class="osm-label" for="admProdColor">Color inicial</label>
+            <select class="osm-select" id="admProdColor" name="fk_id_color"></select>
+          </div>
+          <div class="col-md-2 osm-field mb-0">
+            <label class="osm-label" for="admProdStock">Stock</label>
+            <input type="number" min="0" class="osm-input" id="admProdStock" name="stock_inicial" value="5" required>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveProductBtn">Crear Prenda</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL NUEVA VARIANTE SKU (#admVariantModal) ============================= -->
+<div class="modal fade" id="admVariantModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1">Añadir Variante SKU</h3>
+      <p class="text-muted small mb-3" id="admVarProductName"></p>
+      <form id="admVariantForm" novalidate>
+        <div class="osm-field">
+          <label class="osm-label" for="admVarSku">Código SKU único</label>
+          <input type="text" class="osm-input" id="admVarSku" name="sku" placeholder="OSM-COR-M-NEG" required>
+        </div>
+        <div class="row g-3">
+          <div class="col-6 osm-field">
+            <label class="osm-label" for="admVarTalla">Talla</label>
+            <select class="osm-select" id="admVarTalla" name="fk_id_talla"></select>
+          </div>
+          <div class="col-6 osm-field">
+            <label class="osm-label" for="admVarColor">Color</label>
+            <select class="osm-select" id="admVarColor" name="fk_id_color"></select>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-6 osm-field">
+            <label class="osm-label" for="admVarPrecio">Precio variante (COP)</label>
+            <input type="number" min="1000" step="1000" class="osm-input" id="admVarPrecio" name="precio_variante" value="145000" required>
+          </div>
+          <div class="col-6 osm-field">
+            <label class="osm-label" for="admVarStock">Stock físico inicial</label>
+            <input type="number" min="0" class="osm-input" id="admVarStock" name="stock_fisico" value="5" required>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveVariantBtn">Guardar Variante</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS (con Subresource Integrity SHA-384) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<!-- Cliente HTTP Desacoplado y Utilidades UI -->
+<script src="js/api.js"></script>
+<script src="js/ui/toast.js"></script>
+<script src="js/ui/helpers.js"></script>
+<script src="js/admin/admin_app.js"></script>
+<!-- JS propio -->
+<script src="js/app.js"></script>
+</body>
+</html>

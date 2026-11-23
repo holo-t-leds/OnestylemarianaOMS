@@ -1,0 +1,34 @@
+ESTÁNDAR ISO/IEC 25010,,,,,,
+REQUISITOS NO FUNCIONALES,,,,,,
+Nro.,Descripción,,,,Atributo,Criterios
+RNF-001,Seguridad de Acceso: El acceso al panel de control debe estar restringido mediante credenciales encriptadas y validación estricta de roles (Administradora / Vendedora).,,,,Seguridad,Alta
+RNF-002,"Concurrencia de Inventario: La actualización del inventario en tiempo real debe soportar transacciones concurrentes sin generar duplicidad de reservas ni ""inventarios fantasma"".",,,,Fiabilidad,Alta
+RNF-003,"Diseño Responsivo (Front-end): La interfaz pública debe estar optimizada para dispositivos móviles y entornos web, garantizando una carga visual limpia y ágil.",,,,Usabilidad,Alta
+RNF-004,Arquitectura Multi-rol: El diseño del backend debe ser modular y escalable para admitir la segregación completa de permisos funcionales en futuras expansiones del negocio.,,,,Escalabilidad,Media
+RNF-005,"Tiempo de respuesta: Las páginas principales del catálogo y las consultas de productos deben
+ responder de manera ágil, evitando tiempos de espera innecesarios para el usuario.",,,,Rendimiento,Alta
+RNF-006,"Protección de credenciales: Las contraseñas de los usuarios no deben almacenarse en texto plano 
+y deben utilizar mecanismos seguros de protección.",,,,Seguridad,Alta
+RNF-007,"Validación de datos: El sistema debe validar los datos ingresados por los usuarios antes
+ de almacenarlos o procesarlos, reduciendo errores y posibles vulnerabilidades.",,,,Seguridad ,Alta
+RNF-008,"Compatibilidad: El catálogo debe funcionar correctamente en los principales navegadores web, 
+manteniendo sus funciones y estructura visual.",,,,Compatibilidad,Media
+RNF-009,"Accesibilidad y legibilidad: La interfaz debe utilizar textos legibles, contraste adecuado y
+ elementos claramente identificables para facilitar la navegación.",,,,Usabilidad,Media
+RNF-010,"Mantenibilidad: El sistema debe estar organizado de manera modular para facilitar la modificación y
+ mantenimiento de funcionalidades sin afectar innecesariamente otros módulos.",,,,Mantenibilidad,Alta
+RNF-011,"Integridad del inventario: El sistema debe impedir que las operaciones de salida generen 
+cantidades de inventario inferiores a cero.",,,,Fiabilidad,Crítica
+RNF-012,"Recuperación de información: El sistema debe contar con mecanismos de respaldo que
+ permitan recuperar la información almacenada ante posibles fallos.",,,,Fiabilidad,Alta
+RNF-013,"Integridad de datos: La información relacionada con productos, variantes e inventario 
+debe mantenerse consistente y relacionada correctamente en la base de datos.",,,,Fiabilidad,Alta
+RNF-014,"Portabilidad: La aplicación debe adaptarse correctamente a computadores, tablets 
+y dispositivos móviles sin pérdida de información o funcionalidades principales.",,,,Portabilidad,Alta
+RNF-015,"Disponibilidad: El sistema debe mantenerse disponible durante el horario de operación 
+definido para permitir la consulta del catálogo y la gestión administrativa.",,,,Fiabilidad,Media
+RNF-016,"Trazabilidad e Inmutabilidad: El sistema debe garantizar la inmutabilidad de los registros históricos de auditoría, impidiendo su edición o eliminación por parte de cualquier usuario o rol mediante políticas estrictas a nivel de base de datos.",,,,Seguridad ,Alta
+RNF-017,Persistencia de Trazabilidad: El mecanismo de registro de auditoría debe operar de forma asíncrona para no penalizar el tiempo de respuesta de las transacciones principales en más de 50 ms.,,,,Seguridad ,Media
+RNF-018,"El sistema debe interoperar con servicios externos mediante protocolos seguros HTTPS y estándares REST para soportar capacidades clave del negocio: autenticación federada (Google Identity), mensajería transaccional y recuperación de cuentas (Resend API), distribución optimizada de multimedia (Cloudinary API) y canalización de órdenes (WhatsApp API).",,,,Interoperabilidad / Arquitectura,Alta
+RNF-019,"La interfaz debe implementar una combinación tipográfica que transmita elegancia y claridad. Se utilizarán fuentes con remate (Serif, tipo Playfair Display o similar) para títulos principales y logotipos, y fuentes sin remate (Sans-serif, tipo Montserrat o Roboto) para los cuerpos de texto, descripciones y navegación. Se debe mantener una estricta jerarquía de tamaños, priorizando la legibilidad con un tamaño base adecuado y textos descriptivos concisos.",,,,Usabilidad,Media
+RNF-020,"El diseño visual (Look & Feel) debe estar alineado a una estética de moda de lujo minimalista. El esquema de color utilizará un fondo predominantemente blanco puro, textos en negro/gris oscuro de alto contraste, y un color de acento amarillo/dorado (ej. #F3C34F) exclusivamente para botones de acción principal (""Añadir al carrito de compras""). La estructura de la página debe ser limpia, utilizando amplios márgenes (espacio en blanco) para resaltar la fotografía de producto y evitar la saturación visual.",,,,Identidad visual,Alta
