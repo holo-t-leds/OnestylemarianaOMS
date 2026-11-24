@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
     reset_token_hash VARCHAR(255) NULL,
     reset_token_expira DATETIME NULL,
     telefono VARCHAR(20),
+    tipo_documento VARCHAR(20) NULL,
+    documento VARCHAR(30) NULL,
+    direccion VARCHAR(255) NULL,
     estado_usuario BOOLEAN DEFAULT TRUE,
     fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (fk_id_rol) REFERENCES roles(id_rol)
@@ -30,6 +33,8 @@ CREATE TABLE IF NOT EXISTS auditoria (
     id_registro_afectado INT,
     valor_anterior TEXT,
     valor_nuevo TEXT,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
     fecha_accion DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (fk_id_usuario_accion) REFERENCES usuarios(id_usuario)
 );

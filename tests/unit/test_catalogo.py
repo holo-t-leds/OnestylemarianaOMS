@@ -268,3 +268,425 @@ def test_api_rest_catalogo_paginacion_filtros_y_codigos_http():
         "motivo": "Intento de sobreventa"
     })
     assert res_over_stock.status_code == 409
+
+
+def test_catalogo_sort_whitelist_y_ui_mejoras_owasp():
+    """Verifica lista blanca de sort en /api/catalogo y marcado limpio CSP de las 4 mejoras UX."""
+    import re
+    from run import app, ALLOWED_CATALOG_SORTS
+
+    assert {"destacados", "priceAsc", "priceDesc", "name", "stock"} <= ALLOWED_CATALOG_SORTS
+    client = app.test_client()
+
+    # 1. Validar todos los modos de ordenamiento permitidos
+    r_asc = client.get("/api/catalogo?per_page=50&sort=priceAsc")
+    assert r_asc.status_code == 200
+    precios_asc = [p["precio"] for p in r_asc.get_json()["data"]["items"]]
+    assert precios_asc == sorted(precios_asc)
+
+    r_desc = client.get("/api/catalogo?per_page=50&sort=priceDesc")
+    assert r_desc.status_code == 200
+    precios_desc = [p["precio"] for p in r_desc.get_json()["data"]["items"]]
+    assert precios_desc == sorted(precios_desc, reverse=True)
+
+    r_name = client.get("/api/catalogo?per_page=50&sort=name")
+    assert r_name.status_code == 200
+    nombres = [p["nombre_producto"].lower() for p in r_name.get_json()["data"]["items"]]
+    assert nombres == sorted(nombres)
+
+    r_stock = client.get("/api/catalogo?per_page=50&sort=stock")
+    assert r_stock.status_code == 200
+    stocks = [p["stock_total_disponible"] for p in r_stock.get_json()["data"]["items"]]
+    assert stocks == sorted(stocks, reverse=True)
+
+    # 2. Lista blanca en parámetro sort: valores manipulados caen en 'destacados' sin fallo
+    r_dest = client.get("/api/catalogo?per_page=50&sort=destacados")
+    r_bad = client.get("/api/catalogo?per_page=50&sort=priceAsc;DROP%20TABLE%20usuarios")
+    assert r_dest.status_code == 200
+    assert r_bad.status_code == 200
+    ids_dest = [p["id"] for p in r_dest.get_json()["data"]["items"]]
+    ids_bad = [p["id"] for p in r_bad.get_json()["data"]["items"]]
+    assert ids_bad == ids_dest
+
+    # 3. Verificar controles HTML y cumplimiento CSP (cero inline styles / event handlers)
+    r_home = client.get("/")
+    assert r_home.status_code == 200
+    html = r_home.get_data(as_text=True)
+
+    assert 'id="catalogSortSelect"' in html
+    for opt_val in ("destacados", "priceAsc", "priceDesc", "stock"):
+        assert f'value="{opt_val}"' in html
+
+    assert 'id="searchQuickChips"' in html
+    for chip in ("Corsets", "Blanco", "Noir", "Denim", "Vestidos"):
+        assert f'data-search-chip="{chip}"' in html
+
+    assert "<style" not in html
+    assert 'style="' not in html
+    assert not re.search(r"\bon(?:click|change|input|keyup|keydown)=", html, re.IGNORECASE)
+
+
+def test_admin_visibilidad_y_filtro_ocultos():
+    """RF-CAT-002 / RF-CAT-004: Ocultar prenda y filtrar por estado=inactivo / estado=oculto."""
+    from run import app, auth_service
+
+    client = app.test_client()
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+    h = {"Authorization": f"Bearer {tok_adm}"}
+
+    lista = client.get("/api/admin/productos?per_page=5", headers=h).get_json()["data"]["items"]
+    target = lista[0]
+    pid = target["id_producto"]
+    assert target["estado_visibilidad"] is True
+
+    try:
+        r_hide = client.patch(
+            f"/api/admin/productos/{pid}/visibilidad",
+            headers=h,
+            json={"estado_visibilidad": False},
+        )
+        assert r_hide.status_code == 200
+        assert r_hide.get_json()["data"]["estado_visibilidad"] is False
+
+        for estado_param in ("inactivo", "oculto"):
+            res_hidden = client.get(f"/api/admin/productos?per_page=50&estado={estado_param}", headers=h)
+            assert res_hidden.status_code == 200
+            hidden_ids = [p["id_producto"] for p in res_hidden.get_json()["data"]["items"]]
+            assert pid in hidden_ids
+
+        # En catálogo público no debe aparecer mientras esté oculto
+        pub_ids = [p["id_producto"] for p in client.get("/api/catalogo?per_page=50").get_json()["data"]["items"]]
+        assert pid not in pub_ids
+    finally:
+        client.patch(
+            f"/api/admin/productos/{pid}/visibilidad",
+            headers=h,
+            json={"estado_visibilidad": True},
+        )
+
+
+def test_rf_cat_003_edicion_completa_prenda_validaciones_y_persistencia():
+    """
+    RF-CAT-003 (Punto 8): Edición completa de prenda (nombre, descripción, categoría y precio)
+    vía PUT /api/admin/productos/<id>, validación de entrada (400/404) y persistencia en lecturas posteriores.
+    """
+    import uuid
+    from run import app, auth_service
+
+    client = app.test_client()
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+    h = {"Authorization": f"Bearer {tok_adm}"}
+    suffix = uuid.uuid4().hex[:8]
+
+    cats = [c for c in client.get("/api/admin/categorias", headers=h).get_json()["data"] if c.get("estado", True)]
+    assert len(cats) >= 2
+    cat_1 = cats[0]["id_categoria"]
+    cat_2 = cats[1]["id_categoria"]
+
+    r_create = client.post(
+        "/api/admin/productos",
+        headers=h,
+        json={
+            "nombre_producto": f"Corset Prueba {suffix}",
+            "descripcion_producto": "Descripción inicial de prueba",
+            "precio_detallista": 150000,
+            "fk_id_categoria": cat_1,
+        },
+    )
+    assert r_create.status_code == 201
+    pid = r_create.get_json()["data"]["id_producto"]
+
+    try:
+        # Validaciones negativas -> 400 / 404
+        assert client.put(f"/api/admin/productos/{pid}", headers=h, json={"precio_detallista": 0}).status_code == 400
+        assert client.put(f"/api/admin/productos/{pid}", headers=h, json={"precio_detallista": -500}).status_code == 400
+        assert client.put(f"/api/admin/productos/{pid}", headers=h, json={"precio_detallista": "invalido"}).status_code == 400
+        assert client.put(f"/api/admin/productos/{pid}", headers=h, json={"nombre_producto": "   "}).status_code == 400
+        assert client.put(f"/api/admin/productos/{pid}", headers=h, json={"fk_id_categoria": 999999}).status_code == 400
+        assert client.put("/api/admin/productos/999999", headers=h, json={"nombre_producto": "No existe"}).status_code == 404
+
+        # Actualización completa válida -> 200
+        nuevo_nombre = f"Corset Imperial Editado {suffix}"
+        nueva_desc = "Confección premium con varillas flexibles actualizadas"
+        nuevo_precio = 215000.0
+        r_upd = client.put(
+            f"/api/admin/productos/{pid}",
+            headers=h,
+            json={
+                "nombre_producto": nuevo_nombre,
+                "descripcion_producto": nueva_desc,
+                "fk_id_categoria": cat_2,
+                "precio_detallista": nuevo_precio,
+            },
+        )
+        assert r_upd.status_code == 200
+        upd = r_upd.get_json()["data"]
+        assert upd["nombre_producto"] == nuevo_nombre
+        assert upd["descripcion_producto"] == nueva_desc
+        assert upd["fk_id_categoria"] == cat_2
+        assert float(upd["precio_detallista"]) == nuevo_precio
+
+        # Verificar persistencia al recargar listado admin y catálogo público
+        r_list = client.get(f"/api/admin/productos?q={suffix}&per_page=20", headers=h)
+        assert r_list.status_code == 200
+        adm_items = r_list.get_json()["data"]["items"]
+        match_adm = next(p for p in adm_items if p["id_producto"] == pid)
+        assert match_adm["nombre_producto"] == nuevo_nombre
+        assert match_adm["fk_id_categoria"] == cat_2
+        assert float(match_adm["precio_detallista"]) == nuevo_precio
+
+        r_pub = client.get("/api/catalogo?per_page=50")
+        assert r_pub.status_code == 200
+        pub_items = r_pub.get_json()["data"]["items"]
+        match_pub = next(p for p in pub_items if p["id_producto"] == pid)
+        assert match_pub["nombre_producto"] == nuevo_nombre
+        assert match_pub["fk_id_categoria"] == cat_2
+        assert float(match_pub["precio_detallista"]) == nuevo_precio
+    finally:
+        client.patch(
+            f"/api/admin/productos/{pid}/visibilidad",
+            headers=h,
+            json={"estado_visibilidad": False},
+        )
+
+
+def test_maestros_crud_integridad_409_y_rbac_solo_admin():
+    """
+    RF-CAT-008..016 (OWASP A01 / Integridad Referencial):
+    - Endpoints de Categorías, Atributos, Tallas y Colores maestros exigen rol Administradora (403 a Vendedora/Clienta).
+    - Alta, edición, activación/desactivación y validación de HEX.
+    - Bloqueo HTTP 409 al intentar eliminar registros en uso; borrado limpio 200 cuando están libres.
+    """
+    import uuid
+    from run import app, auth_service
+
+    client = app.test_client()
+    suffix = uuid.uuid4().hex[:8]
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+    tok_ven = auth_service.validar_credenciales("vendedora@onestylemariana.co", "VentasOneStyle2026")
+    r_cli = client.post(
+        "/api/auth/register",
+        json={"nombre": "Sara", "apellido": "Master", "email": f"sara.master.{suffix}@test.co", "contrasena": "MasterPass1"},
+    )
+    assert r_cli.status_code == 201
+    tok_cli = r_cli.get_json()["data"]["token"]
+
+    adm_hdr = {"Authorization": f"Bearer {tok_adm}"}
+    ven_hdr = {"Authorization": f"Bearer {tok_ven}"}
+    cli_hdr = {"Authorization": f"Bearer {tok_cli}"}
+
+    # 1. RBAC estricto para Vendedora y Clienta
+    for bad_hdr in (ven_hdr, cli_hdr):
+        assert client.get("/api/admin/categorias", headers=bad_hdr).status_code == 403
+        assert client.post("/api/admin/categorias", headers=bad_hdr, json={"nombre_categoria": "Hack"}).status_code == 403
+        assert client.put("/api/admin/categorias/1", headers=bad_hdr, json={"nombre_categoria": "Hack"}).status_code == 403
+        assert client.patch("/api/admin/categorias/1/estado", headers=bad_hdr, json={"estado": False}).status_code == 403
+        assert client.delete("/api/admin/categorias/1", headers=bad_hdr).status_code == 403
+        assert client.get("/api/admin/atributos", headers=bad_hdr).status_code == 403
+        assert client.post("/api/admin/tallas", headers=bad_hdr, json={"nombre_talla": "H"}).status_code == 403
+        assert client.put("/api/admin/tallas/1", headers=bad_hdr, json={"nombre_talla": "H"}).status_code == 403
+        assert client.patch("/api/admin/tallas/1/estado", headers=bad_hdr, json={"estado": False}).status_code == 403
+        assert client.delete("/api/admin/tallas/1", headers=bad_hdr).status_code == 403
+        assert client.post("/api/admin/colores", headers=bad_hdr, json={"nombre_color": "H", "codigo_hex": "#000000"}).status_code == 403
+        assert client.put("/api/admin/colores/1", headers=bad_hdr, json={"nombre_color": "H"}).status_code == 403
+        assert client.patch("/api/admin/colores/1/estado", headers=bad_hdr, json={"estado": False}).status_code == 403
+        assert client.delete("/api/admin/colores/1", headers=bad_hdr).status_code == 403
+
+    # 2. Categoría libre: CRUD completo + bloqueo 409 en categoría en uso
+    assert client.delete("/api/admin/categorias/1", headers=adm_hdr).status_code == 409
+
+    r_cat = client.post(
+        "/api/admin/categorias",
+        headers=adm_hdr,
+        json={"nombre_categoria": f"Línea Gala {suffix}", "descripcion_categoria": "Colección limitada"},
+    )
+    assert r_cat.status_code == 201
+    cat_id = r_cat.get_json()["data"]["id_categoria"]
+    assert client.put(
+        f"/api/admin/categorias/{cat_id}",
+        headers=adm_hdr,
+        json={"nombre_categoria": f"Línea Gala VIP {suffix}", "descripcion_categoria": "Actualizada"},
+    ).status_code == 200
+    assert client.patch(f"/api/admin/categorias/{cat_id}/estado", headers=adm_hdr, json={"estado": False}).status_code == 200
+    assert client.patch(f"/api/admin/categorias/{cat_id}/estado", headers=adm_hdr, json={"estado": True}).status_code == 200
+    assert client.delete(f"/api/admin/categorias/{cat_id}", headers=adm_hdr).status_code == 200
+
+    # 3. Tallas y Colores: validación HEX, uso 409 y borrado limpio 200
+    attrs_before = client.get("/api/admin/atributos", headers=adm_hdr).get_json()["data"]
+    used_size = next(t for t in attrs_before["tallas"] if t["en_uso"])
+    used_color = next(c for c in attrs_before["colores"] if c["en_uso"])
+    assert client.delete(f"/api/admin/tallas/{used_size['id_talla']}", headers=adm_hdr).status_code == 409
+    assert client.delete(f"/api/admin/colores/{used_color['id_color']}", headers=adm_hdr).status_code == 409
+
+    r_sz = client.post("/api/admin/tallas", headers=adm_hdr, json={"nombre_talla": f"T{suffix[:4].upper()}"})
+    assert r_sz.status_code == 201
+    tid = r_sz.get_json()["data"]["id_talla"]
+    assert client.put(f"/api/admin/tallas/{tid}", headers=adm_hdr, json={"nombre_talla": f"U{suffix[:4].upper()}"}).status_code == 200
+    assert client.patch(f"/api/admin/tallas/{tid}/estado", headers=adm_hdr, json={"estado": False}).status_code == 200
+    assert client.patch(f"/api/admin/tallas/{tid}/estado", headers=adm_hdr, json={"estado": True}).status_code == 200
+    assert client.delete(f"/api/admin/tallas/{tid}", headers=adm_hdr).status_code == 200
+
+    assert client.post(
+        "/api/admin/colores",
+        headers=adm_hdr,
+        json={"nombre_color": f"BadHex {suffix}", "codigo_hex": "no-hex"},
+    ).status_code == 400
+    r_col = client.post(
+        "/api/admin/colores",
+        headers=adm_hdr,
+        json={"nombre_color": f"Zafiro {suffix}", "codigo_hex": "#1b4d89"},
+    )
+    assert r_col.status_code == 201
+    cid = r_col.get_json()["data"]["id_color"]
+    r_col_upd = client.put(
+        f"/api/admin/colores/{cid}",
+        headers=adm_hdr,
+        json={"nombre_color": f"Zafiro Real {suffix}", "codigo_hex": "#224488"},
+    )
+    assert r_col_upd.status_code == 200
+    assert r_col_upd.get_json()["data"]["codigo_hex"] == "#224488"
+    assert client.patch(f"/api/admin/colores/{cid}/estado", headers=adm_hdr, json={"estado": False}).status_code == 200
+    assert client.patch(f"/api/admin/colores/{cid}/estado", headers=adm_hdr, json={"estado": True}).status_code == 200
+    assert client.delete(f"/api/admin/colores/{cid}", headers=adm_hdr).status_code == 200
+
+
+def test_galeria_1_a_n_upload_seguro_owasp_reorden_portada_y_borrado():
+    """
+    RF-CAT-017 (OWASP Unrestricted File Upload + A01):
+    - Exige rol Administradora en subida, portada, reordenamiento y borrado.
+    - Rechaza .php, .svg, spoofing de magic bytes (texto renombrado a .png) y archivos > 5 MB (413).
+    - Permite subir 1..N imágenes válidas (PNG/WEBP) con UUID, marcar portada, reordenar, ver en /api/catalogo y eliminar de disco.
+    """
+    import io
+    import os
+    import uuid
+    from PIL import Image
+    from run import app, auth_service, UPLOAD_PRODUCTS_DIR
+
+    def _make_img_bytes(fmt: str, color: tuple) -> bytes:
+        buf = io.BytesIO()
+        Image.new("RGB", (6, 6), color).save(buf, format=fmt)
+        return buf.getvalue()
+
+    client = app.test_client()
+    suffix = uuid.uuid4().hex[:8]
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+    tok_ven = auth_service.validar_credenciales("vendedora@onestylemariana.co", "VentasOneStyle2026")
+    adm_hdr = {"Authorization": f"Bearer {tok_adm}"}
+    ven_hdr = {"Authorization": f"Bearer {tok_ven}"}
+
+    r_prod = client.post(
+        "/api/admin/productos",
+        headers=adm_hdr,
+        json={
+            "nombre_producto": f"Vestido Galeria {suffix}",
+            "descripcion_producto": "Prenda para validar galería 1..N",
+            "precio_detallista": 195000,
+            "fk_id_categoria": 1,
+        },
+    )
+    assert r_prod.status_code == 201
+    pid = r_prod.get_json()["data"]["id_producto"]
+
+    png_bytes = _make_img_bytes("PNG", (180, 120, 90))
+    webp_bytes = _make_img_bytes("WEBP", (40, 80, 140))
+
+    try:
+        # 1. Vendedora bloqueada con 403 en endpoints de galería
+        assert client.get(f"/api/admin/productos/{pid}/imagenes", headers=ven_hdr).status_code == 403
+        assert client.post(
+            f"/api/admin/productos/{pid}/imagenes",
+            headers=ven_hdr,
+            data={"imagenes": (io.BytesIO(png_bytes), "foto.png")},
+            content_type="multipart/form-data",
+        ).status_code == 403
+
+        # 2. Rechazo de extensiones peligrosas, spoofing y tamaño > 5 MB
+        for fname, content in (
+            ("shell.php", b"<?php system($_GET['c']); ?>"),
+            ("xss.svg", b"<svg onload=alert(1)></svg>"),
+            ("pagina.html", b"<script>alert(1)</script>"),
+            ("spoof.png", b"Este archivo NO es un PNG real"),
+        ):
+            r_bad = client.post(
+                f"/api/admin/productos/{pid}/imagenes",
+                headers=adm_hdr,
+                data={"imagenes": (io.BytesIO(content), fname)},
+                content_type="multipart/form-data",
+            )
+            assert r_bad.status_code == 400
+
+        oversized = b"\x89PNG\r\n\x1a\n" + (b"\x00" * (5 * 1024 * 1024 + 32))
+        r_big = client.post(
+            f"/api/admin/productos/{pid}/imagenes",
+            headers=adm_hdr,
+            data={"imagenes": (io.BytesIO(oversized), "gigante.png")},
+            content_type="multipart/form-data",
+        )
+        assert r_big.status_code == 413
+
+        # 3. Subida múltiple válida (PNG + WEBP) con nombres UUID en static/img/uploads
+        r_up = client.post(
+            f"/api/admin/productos/{pid}/imagenes",
+            headers=adm_hdr,
+            data={
+                "imagenes": [
+                    (io.BytesIO(png_bytes), "../../malicioso.png"),
+                    (io.BytesIO(webp_bytes), "vista_trasera.webp"),
+                ]
+            },
+            content_type="multipart/form-data",
+        )
+        assert r_up.status_code == 201
+        up_data = r_up.get_json()["data"]
+        imgs = up_data["imagenes"]
+        assert len(imgs) == 2
+        id_1, id_2 = imgs[0]["id_imagen"], imgs[1]["id_imagen"]
+        url_1, url_2 = imgs[0]["url_imagen"], imgs[1]["url_imagen"]
+        assert url_1.startswith("img/uploads/") and "malicioso" not in url_1
+        assert url_2.startswith("img/uploads/")
+        assert os.path.isfile(os.path.join(UPLOAD_PRODUCTS_DIR, os.path.basename(url_1)))
+        assert os.path.isfile(os.path.join(UPLOAD_PRODUCTS_DIR, os.path.basename(url_2)))
+
+        # 4. Vitrina pública y PDP exponen la portada y la galería completa 1..N
+        r_det = client.get(f"/api/catalogo/{pid}")
+        assert r_det.status_code == 200
+        det = r_det.get_json()["data"]
+        assert det["img"] == url_1
+        assert len(det["imagenes"]) == 2
+
+        # 5. Marcar segunda imagen como principal y reordenar
+        r_prin = client.patch(f"/api/admin/productos/{pid}/imagenes/{id_2}/principal", headers=adm_hdr)
+        assert r_prin.status_code == 200
+        assert r_prin.get_json()["data"]["url_imagen_principal"] == url_2
+
+        assert client.patch(
+            f"/api/admin/productos/{pid}/imagenes/reordenar",
+            headers=adm_hdr,
+            json={"orden_ids": [id_2]},
+        ).status_code == 400
+
+        r_reord = client.patch(
+            f"/api/admin/productos/{pid}/imagenes/reordenar",
+            headers=adm_hdr,
+            json={"orden_ids": [id_2, id_1]},
+        )
+        assert r_reord.status_code == 200
+        reord_imgs = r_reord.get_json()["data"]["imagenes"]
+        assert [i["id_imagen"] for i in reord_imgs] == [id_2, id_1]
+        assert reord_imgs[0]["orden"] == 1
+
+        # 6. Eliminar imagen 2: borra archivo físico en disco y promueve imagen 1 como portada
+        r_del2 = client.delete(f"/api/admin/productos/{pid}/imagenes/{id_2}", headers=adm_hdr)
+        assert r_del2.status_code == 200
+        assert not os.path.exists(os.path.join(UPLOAD_PRODUCTS_DIR, os.path.basename(url_2)))
+        assert r_del2.get_json()["data"]["url_imagen_principal"] == url_1
+    finally:
+        restantes = client.get(f"/api/admin/productos/{pid}/imagenes", headers=adm_hdr).get_json()["data"]["imagenes"]
+        for im in restantes:
+            client.delete(f"/api/admin/productos/{pid}/imagenes/{im['id_imagen']}", headers=adm_hdr)
+        client.patch(
+            f"/api/admin/productos/{pid}/visibilidad",
+            headers=adm_hdr,
+            json={"estado_visibilidad": False},
+        )

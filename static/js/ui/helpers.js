@@ -152,9 +152,27 @@ OSM.field = {
   }
 };
 
+OSM.passwordPolicy = {
+  check(pwd) {
+    const s = String(pwd ?? '');
+    return {
+      length: s.length >= 8,
+      upper: /[A-Z]/.test(s),
+      lower: /[a-z]/.test(s),
+      digit: /[0-9]/.test(s)
+    };
+  },
+  isValid(pwd) {
+    const c = this.check(pwd);
+    return c.length && c.upper && c.lower && c.digit;
+  },
+  message: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número (RN-SEG-008).'
+};
+
 OSM.rules = {
   required: msg => v => (String(v ?? '').trim() ? '' : (msg || 'Este campo es obligatorio.')),
   minLength: (n, msg) => v => (String(v ?? '').trim().length >= n ? '' : (msg || `Debe tener al menos ${n} caracteres.`)),
+  strongPassword: msg => v => (OSM.passwordPolicy.isValid(v) ? '' : (msg || OSM.passwordPolicy.message)),
   email: msg => v => (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v ?? '').trim()) ? '' : (msg || 'Ingresa un correo válido.')),
   phone: msg => v => (String(v ?? '').replace(/\D/g, '').length >= 7 ? '' : (msg || 'Ingresa un teléfono válido (mínimo 7 dígitos).')),
   positiveNumber: msg => v => (Number(v) > 0 ? '' : (msg || 'Debe ser un número mayor a cero.')),
@@ -214,4 +232,36 @@ OSM.whatsappUrl = (phone, message) => {
   if (!digits) return null;
   if (digits.length === 10 && digits.startsWith('3')) digits = '57' + digits; // móvil colombiano
   return `https://wa.me/${digits}?text=${encodeURIComponent(OSM.clean(message))}`;
+};
+
+/* ---------- CSV seguro con prevención de Formula Injection (OWASP) ---------- */
+OSM.csv = {
+  sanitizeCell(value) {
+    if (value === null || value === undefined) return '';
+    let str = String(value);
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    if (/[",\n\r]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  },
+  toCSV(headers, rows) {
+    const headerLine = (headers || []).map(h => this.sanitizeCell(h)).join(',');
+    const bodyLines = (rows || []).map(row => (row || []).map(cell => this.sanitizeCell(cell)).join(','));
+    return [headerLine, ...bodyLines].join('\r\n');
+  },
+  download(filename, headers, rows) {
+    const csvContent = '\uFEFF' + this.toCSV(headers, rows);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'reporte.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 };

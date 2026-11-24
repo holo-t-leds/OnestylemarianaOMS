@@ -577,7 +577,11 @@ class PedidosService:
         return [self.serializar_pedido(pid) for pid in ids]
 
     def listar_pedidos_oms(
-        self, estado: Optional[str] = None, vendedora_id: Optional[int] = None
+        self,
+        estado: Optional[str] = None,
+        vendedora_id: Optional[int] = None,
+        fecha_inicio: Optional[datetime] = None,
+        fecha_fin: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         """RF-PED-002 y RF-PED-004: Lista pedidos para el panel administrativo OMS con filtros."""
         resultado = []
@@ -586,6 +590,18 @@ class PedidosService:
             if estado and p["estado"].lower() != estado.strip().lower():
                 continue
             if vendedora_id is not None and p.get("fk_id_vendedora_asig") != vendedora_id:
+                continue
+            raw_fecha = p.get("fecha")
+            if isinstance(raw_fecha, str):
+                try:
+                    fecha_ped = datetime.fromisoformat(raw_fecha)
+                except ValueError:
+                    fecha_ped = None
+            else:
+                fecha_ped = raw_fecha
+            if fecha_inicio is not None and (fecha_ped is None or fecha_ped < fecha_inicio):
+                continue
+            if fecha_fin is not None and (fecha_ped is None or fecha_ped > fecha_fin):
                 continue
             resultado.append(self.serializar_pedido(pid))
         return resultado
@@ -697,26 +713,51 @@ class PedidosService:
         usuario_id: int,
         estado: Optional[str] = None,
         vendedora_id: Optional[int] = None,
+        fecha_inicio: Optional[datetime] = None,
+        fecha_fin: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
-        RF-PED-004 / RN-PED-004: Genera reporte consolidado de ventas por estado y vendedora.
-        Acceso exclusivo para Administradora y Vendedora.
+        RF-PED-004 / RN-PED-004: Genera reporte consolidado de ventas por estado, rango de fechas
+        y vendedora. Acceso exclusivo para el rol Administradora (OWASP A01).
         """
-        if rol_solicitante not in ("Administradora", "Vendedora"):
-            raise PermissionError("RN-PED-004: Acceso exclusivo a usuarios con rol administrativo o comercial.")
+        if rol_solicitante != "Administradora":
+            raise PermissionError("RN-PED-004: Acceso exclusivo para el rol Administradora.")
 
-        pedidos_filtrados = self.listar_pedidos_oms(estado=estado, vendedora_id=vendedora_id)
+        pedidos_filtrados = self.listar_pedidos_oms(
+            estado=estado,
+            vendedora_id=vendedora_id,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+        )
         ingresos_totales = 0.0
         conteo_por_estado: Dict[str, int] = {}
         ventas_por_vendedora: Dict[int, float] = {}
+        resumen_map: Dict[int, Dict[str, Any]] = {}
 
         for p in pedidos_filtrados:
             est = p["estado"]
             conteo_por_estado[est] = conteo_por_estado.get(est, 0) + 1
+            vid = int(p.get("fk_id_vendedora_asig") or 2)
+            entry = resumen_map.setdefault(
+                vid,
+                {
+                    "vendedora_id": vid,
+                    "cantidad_pedidos": 0,
+                    "pedidos_activos": 0,
+                    "pedidos_cancelados": 0,
+                    "total_vendido": 0.0,
+                    "por_estado": {},
+                },
+            )
+            entry["cantidad_pedidos"] += 1
+            entry["por_estado"][est] = entry["por_estado"].get(est, 0) + 1
             if self.STAGE_MAP.get(est, 1) != 0:
                 ingresos_totales = round(ingresos_totales + float(p["total"]), 2)
-                vid = int(p.get("fk_id_vendedora_asig") or 2)
                 ventas_por_vendedora[vid] = round(ventas_por_vendedora.get(vid, 0.0) + float(p["total"]), 2)
+                entry["pedidos_activos"] += 1
+                entry["total_vendido"] = round(entry["total_vendido"] + float(p["total"]), 2)
+            else:
+                entry["pedidos_cancelados"] += 1
 
         reporte_entry = {
             "id_reporte": self.reporte_id_counter,
@@ -727,6 +768,7 @@ class PedidosService:
             "ingresos_totales": ingresos_totales,
             "conteo_por_estado": conteo_por_estado,
             "ventas_por_vendedora": ventas_por_vendedora,
+            "resumen_vendedoras_raw": list(resumen_map.values()),
             "pedidos": pedidos_filtrados,
         }
         self.reporte_id_counter += 1

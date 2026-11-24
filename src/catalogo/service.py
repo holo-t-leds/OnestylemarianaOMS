@@ -1,4 +1,5 @@
 # src/catalogo/service.py
+import re
 import threading
 import unicodedata
 from datetime import datetime
@@ -29,6 +30,7 @@ class CatalogoService:
     """
 
     FORMATOS_IMAGEN_PERMITIDOS = {"JPG", "JPEG", "PNG", "WEBP"}
+    MAX_IMAGENES_POR_PRODUCTO = 10
 
     # Consultas SQL Parametrizadas (OWASP A03)
     SQL_SELECT_CATALOGO_PUBLICO = """
@@ -156,6 +158,9 @@ class CatalogoService:
             item = dict(c)
             item["imagen_representativa"] = img_rep
             item["total_productos"] = len(prods_cat)
+            item["total_productos_vinculados"] = sum(
+                1 for p in self.productos.values() if p["categoria_id"] == c["id_categoria"]
+            )
             cats.append(item)
         return cats
 
@@ -211,9 +216,47 @@ class CatalogoService:
             )
             return True
 
+    def activar_categoria(self, categoria_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Reactiva una categoría maestra desactivada."""
+        with self._lock:
+            if categoria_id not in self.categorias:
+                raise NotFoundError("Categoría no encontrada.")
+            anterior = {"estado": self.categorias[categoria_id]["estado"]}
+            self.categorias[categoria_id]["estado"] = True
+            self._registrar_auditoria(
+                usuario_id, "ACTIVACION_CATEGORIA", "categorias", categoria_id, anterior, {"estado": True}
+            )
+            return True
+
+    def eliminar_categoria(self, categoria_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Elimina una categoría solo si no tiene ninguna prenda vinculada (HTTP 409 en caso contrario)."""
+        with self._lock:
+            if categoria_id not in self.categorias:
+                raise NotFoundError("Categoría no encontrada.")
+            en_uso = any(p["categoria_id"] == categoria_id for p in self.productos.values())
+            if en_uso:
+                raise ConflictError(
+                    "No se puede eliminar la categoría porque tiene prendas vinculadas. Reasígnalas o desactívala primero."
+                )
+            eliminada = self.categorias.pop(categoria_id)
+            self._registrar_auditoria(
+                usuario_id, "ELIMINACION_CATEGORIA", "categorias", categoria_id, eliminada, None
+            )
+            return True
+
     # -------------------------------------------------------------------------
     # 2. Gestión de Tallas y Colores Maestros (RF-CAT-013 a RF-CAT-016)
     # -------------------------------------------------------------------------
+
+    def _validar_codigo_hex(self, codigo_hex: Optional[str]) -> str:
+        raw = str(codigo_hex if codigo_hex is not None else "#17140F").strip()
+        if not raw:
+            raw = "#17140F"
+        if re.fullmatch(r"#[0-9A-Fa-f]{3}", raw):
+            raw = "#" + "".join(ch * 2 for ch in raw[1:])
+        if not re.fullmatch(r"#[0-9A-Fa-f]{6}", raw):
+            raise ValueError("El código hexadecimal del color debe tener formato #RRGGBB (ej. #17140F).")
+        return raw.upper()
 
     def crear_talla(self, nombre_talla: str, usuario_id: Optional[int] = None) -> int:
         """RF-CAT-013 / RN-CAT-013: Registro de talla maestra con unicidad."""
@@ -233,6 +276,7 @@ class CatalogoService:
                 "estado": True
             }
             self.talla_id_counter += 1
+            self._registrar_auditoria(usuario_id, "CREACION_TALLA", "tallas", tid, None, self.tallas[tid])
             return tid
 
     def crear_color(self, nombre_color: str, codigo_hex: str = "#17140F", usuario_id: Optional[int] = None) -> int:
@@ -240,6 +284,7 @@ class CatalogoService:
         c_clean = (nombre_color or "").strip()
         if not c_clean:
             raise ValueError("El nombre del color es obligatorio.")
+        hex_validado = self._validar_codigo_hex(codigo_hex)
 
         with self._lock:
             for c in self.colores.values():
@@ -251,22 +296,48 @@ class CatalogoService:
                 "id_color": cid,
                 "nombre_color": c_clean,
                 "slug": _slugify(c_clean),
-                "codigo_hex": (codigo_hex or "#17140F").strip(),
+                "codigo_hex": hex_validado,
                 "estado": True
             }
             self.color_id_counter += 1
+            self._registrar_auditoria(usuario_id, "CREACION_COLOR", "colores", cid, None, self.colores[cid])
             return cid
 
     def listar_atributos_maestros(self, solo_activos: bool = False) -> Dict[str, List[Dict[str, Any]]]:
-        """RF-CAT-014: Consulta de tablas maestras de tallas y colores."""
-        tallas_list = list(self.tallas.values())
-        colores_list = list(self.colores.values())
-        if solo_activos:
-            tallas_list = [t for t in tallas_list if t.get("estado", True)]
-            colores_list = [c for c in colores_list if c.get("estado", True)]
+        """RF-CAT-014: Consulta de tablas maestras de tallas y colores con conteo de uso."""
+        talla_counts: Dict[int, int] = {}
+        color_counts: Dict[int, int] = {}
+        for var in self.variantes.values():
+            tid = var.get("talla_id")
+            cid = var.get("color_id")
+            if tid is not None:
+                talla_counts[int(tid)] = talla_counts.get(int(tid), 0) + 1
+            if cid is not None:
+                color_counts[int(cid)] = color_counts.get(int(cid), 0) + 1
+
+        tallas_list = []
+        for t in self.tallas.values():
+            if solo_activos and not t.get("estado", True):
+                continue
+            item = dict(t)
+            cnt = talla_counts.get(int(t["id_talla"]), 0)
+            item["total_variantes"] = cnt
+            item["en_uso"] = cnt > 0
+            tallas_list.append(item)
+
+        colores_list = []
+        for c in self.colores.values():
+            if solo_activos and not c.get("estado", True):
+                continue
+            item = dict(c)
+            cnt = color_counts.get(int(c["id_color"]), 0)
+            item["total_variantes"] = cnt
+            item["en_uso"] = cnt > 0
+            colores_list.append(item)
+
         return {"tallas": tallas_list, "colores": colores_list}
 
-    def actualizar_talla(self, talla_id: int, nuevo_nombre: str) -> Dict[str, Any]:
+    def actualizar_talla(self, talla_id: int, nuevo_nombre: str, usuario_id: Optional[int] = None) -> Dict[str, Any]:
         """RF-CAT-015 / RN-CAT-015: Bloquea modificación si existen registros de inventario vinculados."""
         with self._lock:
             if talla_id not in self.tallas:
@@ -285,22 +356,117 @@ class CatalogoService:
                 if tid != talla_id and t["nombre_talla"].upper() == t_clean:
                     raise ConflictError(f"La talla '{t_clean}' ya existe.")
 
+            anterior = dict(self.tallas[talla_id])
             self.tallas[talla_id]["nombre_talla"] = t_clean
+            self._registrar_auditoria(usuario_id, "ACTUALIZACION_TALLA", "tallas", talla_id, anterior, self.tallas[talla_id])
             return dict(self.tallas[talla_id])
 
-    def desactivar_talla(self, talla_id: int) -> bool:
-        """RF-CAT-016: Baja lógica de talla maestra."""
-        if talla_id not in self.tallas:
-            raise NotFoundError("Talla no encontrada.")
-        self.tallas[talla_id]["estado"] = False
-        return True
+    def activar_talla(self, talla_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Reactiva una talla maestra."""
+        with self._lock:
+            if talla_id not in self.tallas:
+                raise NotFoundError("Talla no encontrada.")
+            anterior = {"estado": self.tallas[talla_id].get("estado", True)}
+            self.tallas[talla_id]["estado"] = True
+            self._registrar_auditoria(usuario_id, "ACTIVACION_TALLA", "tallas", talla_id, anterior, {"estado": True})
+            return True
 
-    def desactivar_color(self, color_id: int) -> bool:
+    def desactivar_talla(self, talla_id: int, usuario_id: Optional[int] = None) -> bool:
+        """RF-CAT-016: Baja lógica de talla maestra."""
+        with self._lock:
+            if talla_id not in self.tallas:
+                raise NotFoundError("Talla no encontrada.")
+            anterior = {"estado": self.tallas[talla_id].get("estado", True)}
+            self.tallas[talla_id]["estado"] = False
+            self._registrar_auditoria(usuario_id, "BAJA_LOGICA_TALLA", "tallas", talla_id, anterior, {"estado": False})
+            return True
+
+    def eliminar_talla(self, talla_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Elimina una talla solo si no tiene variantes asociadas (HTTP 409 en caso contrario)."""
+        with self._lock:
+            if talla_id not in self.tallas:
+                raise NotFoundError("Talla no encontrada.")
+            if any(v.get("talla_id") == talla_id for v in self.variantes.values()):
+                raise ConflictError(
+                    "No se puede eliminar la talla porque está en uso por variantes activas. Desactívala o reasigna las variantes primero."
+                )
+            eliminada = self.tallas.pop(talla_id)
+            self._registrar_auditoria(usuario_id, "ELIMINACION_TALLA", "tallas", talla_id, eliminada, None)
+            return True
+
+    def actualizar_color(
+        self,
+        color_id: int,
+        nombre_color: Optional[str] = None,
+        codigo_hex: Optional[str] = None,
+        usuario_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Actualiza color maestro validando unicidad, formato HEX e integridad referencial."""
+        with self._lock:
+            if color_id not in self.colores:
+                raise NotFoundError("Color no encontrado.")
+
+            col = self.colores[color_id]
+            anterior = dict(col)
+            en_uso = any(v.get("color_id") == color_id for v in self.variantes.values())
+
+            if nombre_color is not None:
+                c_clean = nombre_color.strip()
+                if not c_clean:
+                    raise ValueError("El nombre del color es obligatorio.")
+                if c_clean.lower() != col["nombre_color"].lower():
+                    if en_uso:
+                        raise ConflictError(
+                            "RN-CAT-015: No se permite renombrar el color porque ya posee variantes vinculadas."
+                        )
+                    for cid, c in self.colores.items():
+                        if cid != color_id and c["nombre_color"].lower() == c_clean.lower():
+                            raise ConflictError(f"El color '{c_clean}' ya existe.")
+                    col["nombre_color"] = c_clean
+                    col["slug"] = _slugify(c_clean)
+
+            if codigo_hex is not None:
+                hex_clean = self._validar_codigo_hex(codigo_hex)
+                col["codigo_hex"] = hex_clean
+                for var in self.variantes.values():
+                    if var.get("color_id") == color_id:
+                        var["codigo_hex"] = hex_clean
+
+            self._registrar_auditoria(usuario_id, "ACTUALIZACION_COLOR", "colores", color_id, anterior, col)
+            return dict(col)
+
+    def activar_color(self, color_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Reactiva un color maestro."""
+        with self._lock:
+            if color_id not in self.colores:
+                raise NotFoundError("Color no encontrado.")
+            anterior = {"estado": self.colores[color_id].get("estado", True)}
+            self.colores[color_id]["estado"] = True
+            self._registrar_auditoria(usuario_id, "ACTIVACION_COLOR", "colores", color_id, anterior, {"estado": True})
+            return True
+
+    def desactivar_color(self, color_id: int, usuario_id: Optional[int] = None) -> bool:
         """RF-CAT-016: Baja lógica de color maestro."""
-        if color_id not in self.colores:
-            raise NotFoundError("Color no encontrado.")
-        self.colores[color_id]["estado"] = False
-        return True
+        with self._lock:
+            if color_id not in self.colores:
+                raise NotFoundError("Color no encontrado.")
+            anterior = {"estado": self.colores[color_id].get("estado", True)}
+            self.colores[color_id]["estado"] = False
+            self._registrar_auditoria(usuario_id, "BAJA_LOGICA_COLOR", "colores", color_id, anterior, {"estado": False})
+            return True
+
+    def eliminar_color(self, color_id: int, usuario_id: Optional[int] = None) -> bool:
+        """Elimina un color solo si no tiene variantes asociadas (HTTP 409 en caso contrario)."""
+        with self._lock:
+            if color_id not in self.colores:
+                raise NotFoundError("Color no encontrado.")
+            if any(v.get("color_id") == color_id for v in self.variantes.values()):
+                raise ConflictError(
+                    "No se puede eliminar el color porque está en uso por variantes activas. Desactívalo o reasigna las variantes primero."
+                )
+            eliminado = self.colores.pop(color_id)
+            self._registrar_auditoria(usuario_id, "ELIMINACION_COLOR", "colores", color_id, eliminado, None)
+            return True
 
     # -------------------------------------------------------------------------
     # 3. Gestión de Productos Maestros (RF-CAT-001 a RF-CAT-004, RF-CAT-012, RF-CAT-017, RF-CAT-018)
@@ -639,57 +805,214 @@ class CatalogoService:
         return alertas
 
     # -------------------------------------------------------------------------
-    # 5. Galería de Imágenes de Producto (RF-CAT-017)
+    # 5. Galería de Imágenes de Producto 1..N (RF-CAT-017)
     # -------------------------------------------------------------------------
 
     def procesar_url_imagen(self, url: str) -> str:
         """
-        Valida que la URL provenga de Cloudinary CDN y la retorna (RF-CAT-017).
+        Valida que la URL provenga de Cloudinary CDN o de una ruta local validada
+        dentro de img/uploads/ (RF-CAT-017 / OWASP File Upload).
         """
-        if not url or not url.startswith("https://res.cloudinary.com/"):
-            raise ValueError("La URL de la imagen debe provenir de Cloudinary CDN.")
-        return url
+        clean = str(url or "").strip()
+        if clean.startswith("https://res.cloudinary.com/"):
+            return clean
+        if re.fullmatch(r"img/uploads/[a-f0-9]{32}\.(?:jpg|jpeg|png|webp)", clean):
+            return clean
+        raise ValueError("La URL de la imagen debe provenir de Cloudinary CDN o de carga local autorizada.")
+
+    def _asegurar_galeria_legacy(self, producto_id: int):
+        """Preserva como imagen principal de galería cualquier imagen previa de semilla/producto."""
+        prod = self.productos.get(producto_id)
+        if not prod:
+            return
+        galeria = self.imagenes.setdefault(producto_id, [])
+        if not galeria and prod.get("url_imagen_principal"):
+            legacy_url = str(prod["url_imagen_principal"]).strip()
+            ext = legacy_url.rsplit(".", 1)[-1].upper() if "." in legacy_url else "JPG"
+            fmt = ext if ext in self.FORMATOS_IMAGEN_PERMITIDOS else "JPG"
+            img_id = self.imagen_id_counter
+            galeria.append({
+                "id_imagen": img_id,
+                "fk_id_producto": producto_id,
+                "url_imagen": legacy_url,
+                "formato": fmt,
+                "es_principal": True,
+                "orden": 1,
+                "fecha_carga": datetime.now().isoformat()
+            })
+            self.imagen_id_counter += 1
 
     def agregar_imagen_producto(
         self,
         producto_id: int,
         url_imagen: str,
         formato: str = "WEBP",
-        es_principal: bool = False
+        es_principal: bool = False,
+        usuario_id: Optional[int] = None
     ) -> int:
-        """RF-CAT-017 / RN-CAT-017: Valida formato (JPG, PNG, WEBP), URL Cloudinary y única imagen principal."""
+        """RF-CAT-017 / RN-CAT-017: Valida formato (JPG, PNG, WEBP), URL segura, límite 1..N y única imagen principal."""
         with self._lock:
             if producto_id not in self.productos:
                 raise NotFoundError("Producto no encontrado.")
 
-            self.procesar_url_imagen(url_imagen)
+            url_clean = self.procesar_url_imagen(url_imagen)
             fmt_clean = (formato or "WEBP").strip().upper()
             if fmt_clean not in self.FORMATOS_IMAGEN_PERMITIDOS:
                 raise ValueError(f"RN-CAT-017: Formato '{fmt_clean}' no permitido. Use JPG, PNG o WEBP.")
 
+            self._asegurar_galeria_legacy(producto_id)
             galeria = self.imagenes.setdefault(producto_id, [])
+            if len(galeria) >= self.MAX_IMAGENES_POR_PRODUCTO:
+                raise ValueError(
+                    f"La prenda ya alcanzó el máximo permitido de {self.MAX_IMAGENES_POR_PRODUCTO} imágenes."
+                )
+
             if es_principal or not galeria:
                 for img in galeria:
                     img["es_principal"] = False
                 es_principal = True
-                self.productos[producto_id]["url_imagen_principal"] = url_imagen
+                self.productos[producto_id]["url_imagen_principal"] = url_clean
 
             img_id = self.imagen_id_counter
             galeria.append({
                 "id_imagen": img_id,
                 "fk_id_producto": producto_id,
-                "url_imagen": url_imagen,
+                "url_imagen": url_clean,
                 "formato": fmt_clean,
                 "es_principal": bool(es_principal),
+                "orden": len(galeria) + 1,
                 "fecha_carga": datetime.now().isoformat()
             })
             self.imagen_id_counter += 1
+            self._registrar_auditoria(
+                usuario_id,
+                "CARGA_IMAGEN_PRODUCTO",
+                "producto_imagen",
+                img_id,
+                None,
+                {"fk_id_producto": producto_id, "url_imagen": url_clean, "es_principal": bool(es_principal)},
+            )
             return img_id
 
     def listar_imagenes_producto(self, producto_id: int) -> List[Dict[str, Any]]:
-        if producto_id not in self.productos:
-            raise NotFoundError("Producto no encontrado.")
-        return list(self.imagenes.get(producto_id, []))
+        with self._lock:
+            if producto_id not in self.productos:
+                raise NotFoundError("Producto no encontrado.")
+            self._asegurar_galeria_legacy(producto_id)
+            galeria = self.imagenes.get(producto_id, [])
+            return [
+                dict(img)
+                for img in sorted(galeria, key=lambda x: (int(x.get("orden", 9999)), int(x.get("id_imagen", 0))))
+            ]
+
+    def marcar_imagen_principal(
+        self, producto_id: int, imagen_id: int, usuario_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Designa una imagen existente de la galería como portada principal."""
+        with self._lock:
+            if producto_id not in self.productos:
+                raise NotFoundError("Producto no encontrado.")
+            self._asegurar_galeria_legacy(producto_id)
+            galeria = self.imagenes.get(producto_id, [])
+            objetivo = next((img for img in galeria if int(img["id_imagen"]) == int(imagen_id)), None)
+            if not objetivo:
+                raise NotFoundError("La imagen solicitada no pertenece a esta prenda.")
+
+            prev_url = self.productos[producto_id].get("url_imagen_principal")
+            for img in galeria:
+                img["es_principal"] = int(img["id_imagen"]) == int(imagen_id)
+            self.productos[producto_id]["url_imagen_principal"] = objetivo["url_imagen"]
+            self._registrar_auditoria(
+                usuario_id,
+                "IMAGEN_PRINCIPAL_PRODUCTO",
+                "producto_imagen",
+                imagen_id,
+                {"url_imagen_principal": prev_url},
+                {"url_imagen_principal": objetivo["url_imagen"]},
+            )
+            return self.listar_imagenes_producto(producto_id)
+
+    def reordenar_imagenes_producto(
+        self, producto_id: int, orden_ids: List[Any], usuario_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Reordena la galería 1..N verificando correspondencia exacta con los IDs existentes."""
+        with self._lock:
+            if producto_id not in self.productos:
+                raise NotFoundError("Producto no encontrado.")
+            self._asegurar_galeria_legacy(producto_id)
+            galeria = self.imagenes.get(producto_id, [])
+            if not galeria:
+                raise ValueError("La prenda no tiene imágenes registradas para reordenar.")
+
+            try:
+                ids_parsed = [int(x) for x in orden_ids]
+            except (TypeError, ValueError):
+                raise ValueError("Todos los identificadores de orden deben ser números enteros.")
+
+            existentes = {int(img["id_imagen"]): img for img in galeria}
+            if len(ids_parsed) != len(existentes) or set(ids_parsed) != set(existentes.keys()):
+                raise ValueError("La lista 'orden_ids' debe incluir exactamente todas las imágenes de la prenda.")
+
+            anterior = [int(img["id_imagen"]) for img in sorted(galeria, key=lambda x: int(x.get("orden", 9999)))]
+            nueva_galeria = []
+            for idx, iid in enumerate(ids_parsed, start=1):
+                item = existentes[iid]
+                item["orden"] = idx
+                nueva_galeria.append(item)
+            self.imagenes[producto_id] = nueva_galeria
+            self._registrar_auditoria(
+                usuario_id,
+                "REORDEN_GALERIA_PRODUCTO",
+                "producto_imagen",
+                producto_id,
+                {"orden": anterior},
+                {"orden": ids_parsed},
+            )
+            return self.listar_imagenes_producto(producto_id)
+
+    def eliminar_imagen_producto(
+        self, producto_id: int, imagen_id: int, usuario_id: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Elimina una imagen de la galería 1..N y promueve portada si corresponde."""
+        with self._lock:
+            if producto_id not in self.productos:
+                raise NotFoundError("Producto no encontrado.")
+            self._asegurar_galeria_legacy(producto_id)
+            galeria = self.imagenes.get(producto_id, [])
+            idx_match = next(
+                (i for i, img in enumerate(galeria) if int(img["id_imagen"]) == int(imagen_id)),
+                None,
+            )
+            if idx_match is None:
+                raise NotFoundError("La imagen solicitada no existe en esta prenda.")
+
+            removed = galeria.pop(idx_match)
+            galeria.sort(key=lambda x: (int(x.get("orden", 9999)), int(x.get("id_imagen", 0))))
+            for idx, img in enumerate(galeria, start=1):
+                img["orden"] = idx
+
+            if galeria:
+                if removed.get("es_principal") or not any(img.get("es_principal") for img in galeria):
+                    for img in galeria:
+                        img["es_principal"] = False
+                    galeria[0]["es_principal"] = True
+                    self.productos[producto_id]["url_imagen_principal"] = galeria[0]["url_imagen"]
+            else:
+                self.productos[producto_id]["url_imagen_principal"] = None
+
+            self._registrar_auditoria(
+                usuario_id,
+                "ELIMINACION_IMAGEN_PRODUCTO",
+                "producto_imagen",
+                imagen_id,
+                removed,
+                None,
+            )
+            return {
+                "eliminada": dict(removed),
+                "imagenes": self.listar_imagenes_producto(producto_id),
+                "url_imagen_principal": self.productos[producto_id].get("url_imagen_principal"),
+            }
 
     # -------------------------------------------------------------------------
     # 6. Consultas de Catálogo Público y Administrativo (RF-CAT-004, RF-CAT-012, RF-CAT-018)
@@ -749,6 +1072,26 @@ class CatalogoService:
             "slug": "negro"
         })
 
+        galeria_raw = self.imagenes.get(prod["id_producto"], [])
+        if galeria_raw:
+            imagenes_serializadas = [
+                dict(img)
+                for img in sorted(galeria_raw, key=lambda x: (int(x.get("orden", 9999)), int(x.get("id_imagen", 0))))
+            ]
+        elif prod.get("url_imagen_principal"):
+            legacy_url = prod["url_imagen_principal"]
+            ext = str(legacy_url).rsplit(".", 1)[-1].upper() if "." in str(legacy_url) else "JPG"
+            imagenes_serializadas = [{
+                "id_imagen": 0,
+                "fk_id_producto": prod["id_producto"],
+                "url_imagen": legacy_url,
+                "formato": ext if ext in self.FORMATOS_IMAGEN_PERMITIDOS else "JPG",
+                "es_principal": True,
+                "orden": 1,
+            }]
+        else:
+            imagenes_serializadas = []
+
         return {
             "id": prod.get("slug", str(prod["id_producto"])),
             "id_producto": prod["id_producto"],
@@ -772,7 +1115,7 @@ class CatalogoService:
             "colorName": primer_color["nombre_color"],
             "colores": list(colores_disponibles.values()),
             "variantes": variantes_detalle,
-            "imagenes": list(self.imagenes.get(prod["id_producto"], [])),
+            "imagenes": imagenes_serializadas,
             "stock_total_disponible": stock_total
         }
 
@@ -902,9 +1245,10 @@ class CatalogoService:
                 or str(p["fk_id_categoria"]) == str(categoria)
             ]
 
-        if estado in ("activo", "true", "1"):
+        estado_norm = estado.strip().lower() if isinstance(estado, str) else ""
+        if estado_norm in ("activo", "visible", "true", "1"):
             resultado = [p for p in resultado if p["estado_visibilidad"] is True]
-        elif estado in ("inactivo", "false", "0"):
+        elif estado_norm in ("inactivo", "oculto", "false", "0"):
             resultado = [p for p in resultado if p["estado_visibilidad"] is False]
 
         return resultado

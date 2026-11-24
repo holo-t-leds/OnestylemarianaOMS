@@ -200,5 +200,155 @@ def test_owasp_zap_csp_sin_unsafe_inline_directivas_sin_fallback_y_sri():
     assert colores_ves.get("rojo") == "img/vestidoamericanoR.jpg"
 
 
+def test_mis_pedidos_y_soporte_auditoria_rbac_fsm_xss():
+    """Valida RBAC (401/403), historial /api/pedidos/mis-pedidos, FSM de tickets, dashboard y XSS/CSP."""
+    import re
+    from run import app, auth_service
+
+    client = app.test_client()
+
+    # 1. Sin autenticación todos los endpoints protegidos devuelven 401
+    assert client.get("/api/pedidos/mis-pedidos").status_code == 401
+    assert client.get("/api/v1/admin/support/tickets").status_code == 401
+    assert client.patch("/api/v1/admin/support/tickets/1", json={"estado": "EN_PROCESO"}).status_code == 401
+    assert client.get("/api/admin/auditoria").status_code == 401
+
+    # 2. Clienta y Vendedora reciben 403 en Soporte/Auditoría exclusivo Administradora
+    reg = client.post("/api/auth/register", json={
+        "nombre": "Sofia",
+        "apellido": "Orden",
+        "email": "sofia.ordenes@test.co",
+        "contrasena": "Password123!"
+    })
+    assert reg.status_code in (200, 201, 400)
+    tok_cli = auth_service.validar_credenciales("sofia.ordenes@test.co", "Password123!")
+    tok_ven = auth_service.validar_credenciales("vendedora@onestylemariana.co", "VentasOneStyle2026")
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+
+    h_cli = {"Authorization": f"Bearer {tok_cli}"}
+    h_ven = {"Authorization": f"Bearer {tok_ven}"}
+    h_adm = {"Authorization": f"Bearer {tok_adm}"}
+
+    for h in (h_cli, h_ven):
+        assert client.get("/api/v1/admin/support/tickets", headers=h).status_code == 403
+        assert client.patch("/api/v1/admin/support/tickets/1", headers=h, json={"estado": "EN_PROCESO"}).status_code == 403
+        assert client.get("/api/admin/auditoria", headers=h).status_code == 403
+
+    # 3. Clienta crea pedido y lo consulta en GET /api/pedidos/mis-pedidos
+    r_prod = client.get("/api/catalogo?per_page=1")
+    first_var = r_prod.get_json()["data"]["items"][0]["variantes"][0]["id_variante"]
+    assert client.post("/api/carrito/items", headers=h_cli, json={"fk_id_variante": first_var, "cantidad": 1}).status_code in (200, 201)
+
+    r_chk = client.post("/api/pedidos/checkout", headers=h_cli, json={
+        "nombre_receptor": "Sofia Orden",
+        "email": "sofia.ordenes@test.co",
+        "direccion_envio": "Calle 85 # 15-20",
+        "barrio": "Chico",
+        "ciudad": "Bogota",
+        "telefono": "3001119988"
+    })
+    assert r_chk.status_code == 201
+    codigo_orden = r_chk.get_json()["data"]["codigo_orden"]
+
+    r_mis = client.get("/api/pedidos/mis-pedidos", headers=h_cli)
+    assert r_mis.status_code == 200
+    mis_list = r_mis.get_json()["data"]
+    assert any(o["codigo_orden"] == codigo_orden and "url_comprobante_whatsapp" in o for o in mis_list)
+
+    # 4. Bloqueo XSS en contacto (400), creación de ticket válido, conteo en dashboard y transición FSM
+    r_xss_tick = client.post(
+        "/api/v1/support/contact",
+        headers={"X-Forwarded-For": "10.255.255.76"},
+        json={
+            "nombre": "Sofia",
+            "email": "sofia.ordenes@test.co",
+            "asunto": "Consulta <script>alert(1)</script>",
+            "mensaje": "Mensaje con vector <img src=x onerror=alert(1)> bloqueado."
+        }
+    )
+    assert r_xss_tick.status_code == 400
+
+    r_tick = client.post(
+        "/api/v1/support/contact",
+        headers={"X-Forwarded-For": "10.255.255.77"},
+        json={
+            "nombre": "Sofia Cliente",
+            "email": "sofia.ordenes@test.co",
+            "codigo_orden": codigo_orden,
+            "asunto": "Consulta talla 'S' & \"M\"",
+            "mensaje": "Hola, necesito confirmar la guía de mi despacho con orden asociada."
+        }
+    )
+    assert r_tick.status_code == 201
+    tid = r_tick.get_json()["data"]["id_ticket"]
+
+    r_dash_before = client.get("/api/admin/dashboard", headers=h_adm)
+    assert r_dash_before.status_code == 200
+    open_before = r_dash_before.get_json()["data"]["soporte"]["tickets_abiertos"]
+    assert open_before >= 1
+
+    r_tickets = client.get("/api/v1/admin/support/tickets", headers=h_adm)
+    assert r_tickets.status_code == 200
+    assert r_tickets.get_json()["data"]["tickets_abiertos"] == open_before
+    ticket_row = next(t for t in r_tickets.get_json()["data"]["items"] if t["id_ticket"] == tid)
+    assert ticket_row["codigo_orden"] == codigo_orden
+
+    # Rechazar salto ilegal ABIERTO -> RESUELTO y payload XSS en respuesta
+    r_jump = client.patch(
+        f"/api/v1/admin/support/tickets/{tid}",
+        headers=h_adm,
+        json={"estado": "RESUELTO"}
+    )
+    assert r_jump.status_code == 400
+
+    assert client.patch(
+        f"/api/v1/admin/support/tickets/{tid}",
+        headers=h_adm,
+        json={"respuesta": "Respuesta <script>alert(1)</script>"}
+    ).status_code == 400
+
+    # Transición válida ABIERTO -> EN_PROCESO
+    r_step1 = client.patch(
+        f"/api/v1/admin/support/tickets/{tid}",
+        headers=h_adm,
+        json={"estado": "EN_PROCESO", "respuesta": "Revisando guía con transportadora."}
+    )
+    assert r_step1.status_code == 200
+    assert r_step1.get_json()["data"]["ticket"]["estado"] == "EN_PROCESO"
+    assert r_step1.get_json()["data"]["ticket"]["respuesta_soporte"] == "Revisando guía con transportadora."
+
+    # Transición válida EN_PROCESO -> RESUELTO
+    r_step2 = client.patch(
+        f"/api/v1/admin/support/tickets/{tid}",
+        headers=h_adm,
+        json={"estado": "RESUELTO", "respuesta": "Pedido confirmado y guía enviada por WhatsApp."}
+    )
+    assert r_step2.status_code == 200
+    assert r_step2.get_json()["data"]["ticket"]["estado"] == "RESUELTO"
+    assert r_step2.get_json()["data"]["tickets_abiertos"] == open_before - 1
+
+    # No permitir retroceso desde RESUELTO
+    assert client.patch(
+        f"/api/v1/admin/support/tickets/{tid}",
+        headers=h_adm,
+        json={"estado": "ABIERTO"}
+    ).status_code == 400
+
+    # 5. Logs de auditoría reflejan actualización de ticket y pedido enriquecidos con usuario
+    r_aud = client.get("/api/admin/auditoria", headers=h_adm)
+    assert r_aud.status_code == 200
+    logs = r_aud.get_json()["data"]
+    assert any(l["tipo_accion"] == "ACTUALIZACION_TICKET" and l["tabla_afectada"] == "soporte_tickets" for l in logs)
+    assert all("usuario_nombre" in l for l in logs)
+
+    # 6. Plantilla HTML contiene los módulos y mantiene CSP sin estilos ni handlers inline
+    html = client.get("/").get_data(as_text=True)
+    for dom_id in ("profileTabPedidos", "myOrdersTrackingSection", "adm-panel-soporte", "admTicketDrawer", "admAuditBody"):
+        assert f'id="{dom_id}"' in html
+    assert "<style" not in html
+    assert 'style="' not in html
+    assert not re.search(r"\bon(?:click|change|input|submit)=", html, re.IGNORECASE)
+
+
 
 

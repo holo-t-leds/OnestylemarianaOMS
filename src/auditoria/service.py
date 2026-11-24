@@ -1,6 +1,7 @@
 # src/auditoria/service.py
 import copy
 import json
+import re
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
@@ -14,14 +15,15 @@ class AuditoriaService:
     SQL_INSERT_LOG = """
         INSERT INTO auditoria (
             fk_id_usuario_accion, tipo_accion, tabla_afectada,
-            id_registro_afectado, valor_anterior, valor_nuevo
-        ) VALUES (%s, %s, %s, %s, %s, %s);
+            id_registro_afectado, valor_anterior, valor_nuevo,
+            ip_address, user_agent
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
     """
 
     SQL_SELECT_LOGS = """
         SELECT a.id_log, a.fk_id_usuario_accion, u.nombre, u.apellido, r.nombre_rol,
                a.tipo_accion, a.tabla_afectada, a.id_registro_afectado,
-               a.valor_anterior, a.valor_nuevo, a.fecha_accion
+               a.valor_anterior, a.valor_nuevo, a.ip_address, a.user_agent, a.fecha_accion
         FROM auditoria a
         INNER JOIN usuarios u ON a.fk_id_usuario_accion = u.id_usuario
         INNER JOIN roles r ON u.fk_id_rol = r.id_rol
@@ -45,6 +47,15 @@ class AuditoriaService:
             return valor
         return json.dumps(valor, ensure_ascii=False, default=str)
 
+    def _sanitizar_metadato(self, valor: Optional[str], max_len: int) -> Optional[str]:
+        """Elimina caracteres de control (anti Log Injection / CRLF) y trunca al máximo permitido."""
+        if valor is None:
+            return None
+        clean = re.sub(r"[\x00-\x1f\x7f]+", " ", str(valor)).strip()
+        if not clean:
+            return None
+        return clean[:max_len]
+
     def registrar_traza_auditoria(
         self,
         usuario_id: int,
@@ -52,14 +63,19 @@ class AuditoriaService:
         tabla_afectada: str,
         registro_id: Optional[int],
         valor_anterior: Any = None,
-        valor_nuevo: Any = None
+        valor_nuevo: Any = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> int:
         """
-        Registra una traza inmutable en memoria y opcionalmente en la tabla física `auditoria` (RF-SEG-001..004).
+        Registra una traza inmutable en memoria y opcionalmente en la tabla física `auditoria` (RF-SEG-001..006).
         """
         val_ant_str = self._serializar_valor(valor_anterior)
         val_nue_str = self._serializar_valor(valor_nuevo)
+        ip_clean = self._sanitizar_metadato(ip_address, 45)
+        ua_clean = self._sanitizar_metadato(user_agent, 255)
 
+        now = datetime.now()
         log = {
             'id': self.log_id_counter,
             'id_log': self.log_id_counter,
@@ -71,8 +87,10 @@ class AuditoriaService:
             'id_registro_afectado': registro_id,
             'valor_anterior': val_ant_str,
             'valor_nuevo': val_nue_str,
-            'fecha': datetime.now(),
-            'fecha_accion': datetime.now().isoformat()
+            'ip_address': ip_clean,
+            'user_agent': ua_clean,
+            'fecha': now,
+            'fecha_accion': now.isoformat()
         }
         self._logs.append(log)
         self.log_id_counter += 1
@@ -84,7 +102,16 @@ class AuditoriaService:
                     with conn.cursor() as cursor:
                         cursor.execute(
                             self.SQL_INSERT_LOG,
-                            (usuario_id, log['tipo_accion'], log['tabla_afectada'], registro_id, val_ant_str, val_nue_str)
+                            (
+                                usuario_id,
+                                log['tipo_accion'],
+                                log['tabla_afectada'],
+                                registro_id,
+                                val_ant_str,
+                                val_nue_str,
+                                ip_clean,
+                                ua_clean,
+                            )
                         )
                     conn.commit()
                 finally:

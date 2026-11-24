@@ -8,7 +8,7 @@ import time
 import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from src.catalogo.service import NotFoundError
+from src.catalogo.service import ConflictError, NotFoundError
 
 
 class RateLimitError(ValueError):
@@ -22,6 +22,13 @@ class FAQService:
     votos de utilidad y baja lógica, canal directo de WhatsApp (`RF-FAQ-011`) y tickets de
     contacto (`SupportTicket` / `ContactMessage`) con sanitización XSS y rate limiting.
     """
+
+    TICKET_STATES = ("ABIERTO", "EN_PROCESO", "RESUELTO")
+    TICKET_ALLOWED_TRANSITIONS = {
+        "ABIERTO": ("EN_PROCESO",),
+        "EN_PROCESO": ("RESUELTO",),
+        "RESUELTO": (),
+    }
 
     def __init__(self, auditoria_service=None, seed_defaults: bool = False):
         self.auditoria_service = auditoria_service
@@ -66,9 +73,10 @@ class FAQService:
         self.tickets: Dict[int, Dict[str, Any]] = {}
         self.ticket_id_counter = 1
 
-        # Control de Rate Limiting por clave de cliente/IP
+        # Control de Rate Limiting y voto único por sesión/usuario por FAQ
         self._contact_rate_log: Dict[str, List[float]] = {}
         self._vote_rate_log: Dict[str, List[float]] = {}
+        self._faq_voters: Dict[int, set] = {}
         self.max_contact_requests_per_window = 3
         self.contact_window_seconds = 60.0
 
@@ -133,6 +141,7 @@ class FAQService:
     def reset_rate_limits(self):
         self._contact_rate_log.clear()
         self._vote_rate_log.clear()
+        self._faq_voters.clear()
 
     def _check_rate_limit(self, bucket: Dict[str, List[float]], key: str, max_reqs: int, window_sec: float):
         now = time.time()
@@ -238,13 +247,17 @@ class FAQService:
         self, id_faq: int, util: bool = True, client_key: str = "default-ip"
     ) -> Dict[str, Any]:
         """
-        Registra un voto de utilidad (`helpful_count` / `not_helpful_count`) en una FAQ activa
-        con protección contra flooding.
+        Registra un único voto de utilidad (`helpful_count` / `not_helpful_count`) por
+        usuario/sesión y pregunta frecuente activa (retorna ConflictError si ya votó).
         """
         if id_faq not in self.faqs or self.faqs[id_faq].get("estado") != "activo":
             raise NotFoundError("La pregunta frecuente solicitada no existe o no está activa.")
 
-        self._check_rate_limit(self._vote_rate_log, f"{client_key}:{id_faq}", max_reqs=5, window_sec=60.0)
+        voter_key = str(client_key or "default-ip").strip()
+        voters = self._faq_voters.setdefault(id_faq, set())
+        if voter_key in voters:
+            raise ConflictError("Ya registraste tu voto para esta pregunta frecuente.")
+        voters.add(voter_key)
 
         faq = self.faqs[id_faq]
         if util:
@@ -283,6 +296,7 @@ class FAQService:
         mensaje: str,
         codigo_orden: Optional[str] = None,
         client_key: str = "default-ip",
+        usuario_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Crea un ticket de soporte (`SupportTicket` / `ContactMessage`) aplicando:
@@ -319,12 +333,16 @@ class FAQService:
         tid = self.ticket_id_counter
         ticket = {
             "id_ticket": tid,
+            "usuario_id": usuario_id,
             "nombre": nombre_clean,
             "contacto": contacto_clean,
             "asunto": asunto_clean,
             "mensaje": mensaje_clean,
             "codigo_orden": orden_clean,
             "estado": "ABIERTO",
+            "respuesta_soporte": None,
+            "respondido_por": None,
+            "updated_at": None,
             "created_at": datetime.now().isoformat(),
             "whatsapp_followup_url": self.generar_enlace_soporte_whatsapp(
                 f"Hola OneStyle Mariana, envié el ticket #{tid} ({asunto_clean})"
@@ -429,6 +447,36 @@ class FAQService:
         self.faqs[id_faq]["usuario_actualizacion"] = usuario_editor
         return True
 
+    def reordenar_faq(self, id_faq: int, nuevo_orden: int, usuario_editor: str) -> List[Dict[str, Any]]:
+        """
+        RF-FAQ-010 / RN-FAQ-010: Cambia la prioridad/posición de una FAQ e intercambia
+        atómico el orden si otra FAQ de la misma categoría ya ocupa la posición destino.
+        """
+        if id_faq not in self.faqs:
+            raise NotFoundError("La pregunta frecuente no existe.")
+
+        target_orden = int(nuevo_orden)
+        if target_orden <= 0:
+            raise ValueError("El orden debe ser un número entero positivo.")
+
+        item = self.faqs[id_faq]
+        old_orden = int(item["orden"])
+        cat_id = item["id_categoria"]
+        ahora = datetime.now()
+
+        if target_orden != old_orden:
+            for fid, other in self.faqs.items():
+                if fid != id_faq and other["id_categoria"] == cat_id and int(other["orden"]) == target_orden:
+                    other["orden"] = old_orden
+                    other["fecha_actualizacion"] = ahora
+                    other["usuario_actualizacion"] = usuario_editor
+                    break
+            item["orden"] = target_orden
+            item["fecha_actualizacion"] = ahora
+            item["usuario_actualizacion"] = usuario_editor
+
+        return self.listar_todas_admin()
+
     def listar_todas_admin(self) -> List[Dict[str, Any]]:
         """
         Lista preguntas activas e inactivas con sus metadatos para el panel de administración (RF-FAQ-006).
@@ -450,3 +498,83 @@ class FAQService:
             )
             resultado.append(copia)
         return sorted(resultado, key=lambda x: (x["id_categoria"], x["orden"]))
+
+    def listar_tickets_admin(self, estado: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lista tickets de soporte para la administradora, ordenados del más reciente al más antiguo."""
+        filtro = (estado or "").strip().upper()
+        if filtro and filtro != "TODOS":
+            if filtro not in self.TICKET_STATES:
+                raise ValueError("Estado de ticket inválido. Use ABIERTO, EN_PROCESO o RESUELTO.")
+            items = [dict(t) for t in self.tickets.values() if t.get("estado") == filtro]
+        else:
+            items = [dict(t) for t in self.tickets.values()]
+        return sorted(items, key=lambda t: t["id_ticket"], reverse=True)
+
+    def listar_tickets_usuario(
+        self, usuario_id: Optional[int] = None, email: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Lista únicamente los tickets pertenecientes a la usuaria autenticada (protección IDOR)."""
+        email_norm = str(email or "").strip().lower()
+        propios = []
+        for t in self.tickets.values():
+            tid_uid = t.get("usuario_id")
+            t_email = str(t.get("contacto") or "").strip().lower()
+            if (usuario_id is not None and tid_uid == usuario_id) or (
+                email_norm and tid_uid is None and t_email == email_norm
+            ):
+                propios.append(dict(t))
+        return sorted(propios, key=lambda t: t["id_ticket"], reverse=True)
+
+    def actualizar_ticket(
+        self,
+        id_ticket: int,
+        nuevo_estado: Optional[str] = None,
+        respuesta: Optional[str] = None,
+        usuario_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Actualiza respuesta y/o ejecuta una transición estricta en la máquina de estados
+        del ticket (ABIERTO -> EN_PROCESO -> RESUELTO), registrando traza en auditoría.
+        """
+        if id_ticket not in self.tickets:
+            raise NotFoundError("El ticket de soporte solicitado no existe.")
+
+        if nuevo_estado is None and respuesta is None:
+            raise ValueError("Debe enviar un nuevo estado o una respuesta para actualizar el ticket.")
+
+        ticket = self.tickets[id_ticket]
+        estado_anterior = ticket.get("estado", "ABIERTO")
+
+        if nuevo_estado is not None:
+            target = str(nuevo_estado).strip().upper()
+            if target not in self.TICKET_STATES:
+                raise ValueError(f"Estado '{nuevo_estado}' no es válido para tickets.")
+            if target != estado_anterior:
+                permitidos = self.TICKET_ALLOWED_TRANSITIONS.get(estado_anterior, ())
+                if target not in permitidos:
+                    raise ValueError(f"Transición inválida de ticket: {estado_anterior} -> {target}.")
+                ticket["estado"] = target
+
+        if respuesta is not None:
+            resp_clean = self._sanitize_text(respuesta)
+            if not resp_clean:
+                raise ValueError("La respuesta de soporte no puede estar vacía.")
+            ticket["respuesta_soporte"] = resp_clean
+            ticket["respondido_por"] = usuario_id
+
+        ticket["updated_at"] = datetime.now().isoformat()
+
+        if self.auditoria_service is not None:
+            detalle_nuevo = f"estado={ticket['estado']}"
+            if ticket.get("respuesta_soporte"):
+                detalle_nuevo += ", respondido=si"
+            self.auditoria_service.registrar_traza_auditoria(
+                usuario_id=int(usuario_id or 1),
+                tipo_accion="ACTUALIZACION_TICKET",
+                tabla_afectada="soporte_tickets",
+                registro_id=id_ticket,
+                valor_anterior=estado_anterior,
+                valor_nuevo=detalle_nuevo,
+            )
+
+        return dict(ticket)

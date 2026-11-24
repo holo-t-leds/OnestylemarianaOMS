@@ -74,6 +74,11 @@ function updateWishlistBadgesAndButtons(){
   }
 }
 
+function findFirstAvailableVariant(product){
+  if(!product || !Array.isArray(product.variantes)) return null;
+  return product.variantes.find(v => Number(v.stock_disponible) > 0) || null;
+}
+
 function renderWishlistDrawer(){
   const wrap = document.getElementById('wishlistItemsWrap');
   if(!wrap) return;
@@ -85,13 +90,31 @@ function renderWishlistDrawer(){
   }
 
   wrap.innerHTML = wishlist.map(item => {
+    const liveProduct = byId(item.id);
+    const firstVar  = findFirstAvailableVariant(liveProduct);
     const safeId    = OneStyleAPI.escapeHTML(item.id);
-    const safeName  = OneStyleAPI.escapeHTML(item.name);
-    const safeColor = OneStyleAPI.escapeHTML(item.colorName || 'Exclusivo');
-    const safeSizes = OneStyleAPI.escapeHTML((item.sizes || []).join(', ') || 'S, M');
-    const safeImg   = item.img
-      ? `<img src="${OneStyleAPI.escapeHTML(item.img)}" alt="${safeName}">`
+    const safeName  = OneStyleAPI.escapeHTML((liveProduct && liveProduct.name) || item.name);
+    const safeColor = OneStyleAPI.escapeHTML((liveProduct && liveProduct.colorName) || item.colorName || 'Exclusivo');
+    const sizesSrc  = (liveProduct && Array.isArray(liveProduct.sizes) && liveProduct.sizes.length)
+      ? liveProduct.sizes
+      : (item.sizes || []);
+    const safeSizes = OneStyleAPI.escapeHTML(sizesSrc.join(', ') || 'S, M');
+    const displayImg = (liveProduct && liveProduct.img) || item.img;
+    const safeImg   = displayImg
+      ? `<img src="${OneStyleAPI.escapeHTML(displayImg)}" alt="${safeName}">`
       : `<div class="card-placeholder card-placeholder--fill"><i class="bi bi-bag"></i></div>`;
+
+    let actionBtnHTML;
+    if(!catalogLoaded && !liveProduct){
+      actionBtnHTML = `<button type="button" class="osm-btn osm-btn--sm wishlist-out-of-stock" disabled aria-disabled="true">Cargando...</button>`;
+    } else if(firstVar){
+      actionBtnHTML = `
+        <button type="button" class="osm-btn osm-btn--gold osm-btn--sm" data-wishlist-add="${safeId}" aria-label="Añadir ${safeName} a la bolsa">
+          <i class="bi bi-bag-plus" aria-hidden="true"></i> Añadir
+        </button>`;
+    } else {
+      actionBtnHTML = `<button type="button" class="osm-btn osm-btn--sm wishlist-out-of-stock" disabled aria-disabled="true">Agotado</button>`;
+    }
 
     return `
       <div class="drawer-item">
@@ -99,12 +122,13 @@ function renderWishlistDrawer(){
         <div>
           <h4><a href="#/producto/${safeId}" data-bs-dismiss="offcanvas">${safeName}</a></h4>
           <div class="meta">${safeColor} · Tallas ${safeSizes}</div>
-          <div class="d-flex justify-content-between align-items-center mt-2">
-            <span class="price">${money(item.price)}</span>
-            <div class="d-flex gap-2">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2">
+            <span class="price">${money((liveProduct && liveProduct.price) || item.price)}</span>
+            <div class="wishlist-item-actions">
+              ${actionBtnHTML}
               <a href="#/producto/${safeId}" class="osm-btn osm-btn--sm" data-bs-dismiss="offcanvas">Ver</a>
-              <button type="button" class="osm-btn osm-btn--sm" data-wishlist-remove="${safeId}" aria-label="Quitar de favoritos">
-                <i class="bi bi-trash"></i>
+              <button type="button" class="osm-btn osm-btn--sm" data-wishlist-remove="${safeId}" aria-label="Quitar ${safeName} de favoritos">
+                <i class="bi bi-trash" aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -264,10 +288,71 @@ function renderHomeRecs(){
   el.innerHTML = list.map(p => cardHTML(p, 'col-12 col-sm-4')).join('');
 }
 
-function renderCuration(){
+function hasAvailableStock(p){
+  if(!p) return false;
+  if(Number(p.stock_total_disponible ?? 0) > 0) return true;
+  return Array.isArray(p.variantes) && p.variantes.some(v => Number(v.stock_disponible) > 0);
+}
+
+function renderCuration(activeProduct = currentProduct){
   const el = document.getElementById('curationGrid');
   if(!el) return;
-  el.innerHTML = PRODUCTS.slice(0, 4).map(p => cardHTML(p, 'col-6 col-lg-3')).join('');
+  if(!catalogLoaded && !PRODUCTS.length){
+    el.innerHTML = skeletonCardsHTML(4, 'col-6 col-lg-3');
+    return;
+  }
+
+  const ref = activeProduct || currentProduct;
+  const candidates = PRODUCTS.filter(p => {
+    if(!ref) return true;
+    const sameSlug = String(p.id) === String(ref.id);
+    const sameId = p.id_producto !== undefined && ref.id_producto !== undefined && p.id_producto === ref.id_producto;
+    return !sameSlug && !sameId;
+  });
+
+  if(!ref){
+    const fallback = [
+      ...candidates.filter(hasAvailableStock),
+      ...candidates.filter(p => !hasAvailableStock(p))
+    ].slice(0, 4);
+    el.innerHTML = fallback.map(p => cardHTML(p, 'col-6 col-lg-3')).join('');
+    updateWishlistBadgesAndButtons();
+    return;
+  }
+
+  const sameCat = p =>
+    (ref.cat && p.cat === ref.cat) ||
+    (ref.fk_id_categoria !== undefined && p.fk_id_categoria === ref.fk_id_categoria);
+  const sameColor = p => Boolean(ref.colorKey && p.colorKey === ref.colorKey);
+  const sharesAnyColor = p =>
+    Boolean(ref.colorKey && Array.isArray(p.colores) && p.colores.some(c => c.slug === ref.colorKey));
+
+  const tier1 = candidates.filter(p => sameCat(p) && sameColor(p));
+  const tier2 = candidates.filter(p => (sameCat(p) || sameColor(p)) && !(sameCat(p) && sameColor(p)));
+  const tier3 = candidates.filter(p => !sameCat(p) && !sameColor(p) && sharesAnyColor(p) && hasAvailableStock(p));
+  const tier4 = candidates.filter(p => hasAvailableStock(p));
+
+  const seen = new Set();
+  const picks = [];
+  const pushUnique = list => {
+    const ordered = [...list.filter(hasAvailableStock), ...list.filter(p => !hasAvailableStock(p))];
+    for(const item of ordered){
+      const key = String(item.id);
+      if(!seen.has(key)){
+        seen.add(key);
+        picks.push(item);
+        if(picks.length >= 4) break;
+      }
+    }
+  };
+
+  for(const tier of [tier1, tier2, tier3, tier4]){
+    if(picks.length >= 4) break;
+    pushUnique(tier);
+  }
+
+  el.innerHTML = picks.map(p => cardHTML(p, 'col-6 col-lg-3')).join('');
+  updateWishlistBadgesAndButtons();
 }
 
 function renderSearchRecs(){
@@ -296,9 +381,58 @@ function renderCatalogBanner(){
 }
 
 /* ------------------------- Filtros del catálogo ------------------------- */
+const ALLOWED_CATALOG_SORTS = (typeof OneStyleAPI !== 'undefined' && Array.isArray(OneStyleAPI.ALLOWED_CATALOG_SORTS))
+  ? OneStyleAPI.ALLOWED_CATALOG_SORTS
+  : ['destacados', 'priceAsc', 'priceDesc', 'name', 'stock'];
+
 let catalogCategory = 'todos';
 let catalogSizes    = new Set();
 let catalogColor    = '';
+let catalogSort     = 'destacados';
+let catalogFetchSeq = 0;
+
+function sanitizeCatalogSort(value){
+  const v = String(value ?? '').trim();
+  return ALLOWED_CATALOG_SORTS.includes(v) ? v : 'destacados';
+}
+
+function sortProductsList(list, sortKey){
+  const copy = list.slice();
+  const safeSort = sanitizeCatalogSort(sortKey);
+  if(safeSort === 'priceAsc'){
+    copy.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+  } else if(safeSort === 'priceDesc'){
+    copy.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  } else if(safeSort === 'name'){
+    copy.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es'));
+  } else if(safeSort === 'stock'){
+    copy.sort((a, b) => Number(b.stock_total_disponible ?? 0) - Number(a.stock_total_disponible ?? 0));
+  }
+  return copy;
+}
+
+function renderCatalogCards(list, totalCount = PRODUCTS.length){
+  const grid      = document.getElementById('catalogGrid');
+  const emptyWrap = document.getElementById('catalogEmptyWrap');
+  const countEl   = document.getElementById('catalogResultsCount');
+  if(!grid || !emptyWrap || !countEl) return;
+
+  if(!list.length){
+    grid.innerHTML = '';
+    grid.classList.add('d-none');
+    emptyWrap.classList.remove('d-none');
+    document.getElementById('catalogEmptyTitle').textContent = 'No encontramos prendas con estos filtros';
+    document.getElementById('catalogEmptyDesc').textContent  =
+      'Prueba con otra talla, color o tipo de prenda, o quita los filtros para ver toda la colección.';
+  }else{
+    grid.classList.remove('d-none');
+    emptyWrap.classList.add('d-none');
+    grid.innerHTML = list.map(p => cardHTML(p)).join('');
+  }
+
+  countEl.textContent = `Mostrando ${list.length} de ${totalCount} piezas`;
+  updateWishlistBadgesAndButtons();
+}
 
 function renderCatalog(){
   const grid      = document.getElementById('catalogGrid');
@@ -329,21 +463,26 @@ function renderCatalog(){
     );
   }
 
-  if(!list.length){
-    grid.innerHTML = '';
-    grid.classList.add('d-none');
-    emptyWrap.classList.remove('d-none');
-    document.getElementById('catalogEmptyTitle').textContent = 'No encontramos prendas con estos filtros';
-    document.getElementById('catalogEmptyDesc').textContent  =
-      'Prueba con otra talla, color o tipo de prenda, o quita los filtros para ver toda la colección.';
-  }else{
-    grid.classList.remove('d-none');
-    emptyWrap.classList.add('d-none');
-    grid.innerHTML = list.map(p => cardHTML(p)).join('');
-  }
+  list = sortProductsList(list, catalogSort);
+  renderCatalogCards(list, PRODUCTS.length);
+}
 
-  countEl.textContent = `Mostrando ${list.length} de ${PRODUCTS.length} piezas`;
-  updateWishlistBadgesAndButtons();
+async function fetchCatalogView(){
+  if(typeof OneStyleAPI === 'undefined' || !OneStyleAPI.catalogo) return;
+  const safeSort = sanitizeCatalogSort(catalogSort);
+  const params = { per_page: 50, sort: safeSort };
+  if(catalogCategory && catalogCategory !== 'todos') params.categoria = catalogCategory;
+  if(catalogSizes.size) params.talla = Array.from(catalogSizes).join(',');
+  if(catalogColor) params.color = catalogColor;
+
+  const seq = ++catalogFetchSeq;
+  try {
+    const res = await OneStyleAPI.catalogo.list(params);
+    if(seq !== catalogFetchSeq) return;
+    if(res && res.data && Array.isArray(res.data.items)){
+      renderCatalogCards(res.data.items, PRODUCTS.length);
+    }
+  } catch (_) {}
 }
 
 function initCatalogFilters(){
@@ -354,6 +493,7 @@ function initCatalogFilters(){
     document.querySelectorAll('#catalogCatFilter .filter-opt')
       .forEach(el => el.classList.toggle('active', el === btn));
     renderCatalog();
+    fetchCatalogView();
   });
 
   const homeCatGrid = document.getElementById('homeCategoriesGrid');
@@ -368,6 +508,7 @@ function initCatalogFilters(){
       document.querySelectorAll('#catalogCatFilter .filter-opt')
         .forEach(el => el.classList.toggle('active', el.dataset.cat === catalogCategory));
       renderCatalog();
+      fetchCatalogView();
       location.hash = '#/catalogo';
     });
   }
@@ -379,6 +520,7 @@ function initCatalogFilters(){
     if(catalogSizes.has(size)){ catalogSizes.delete(size); chip.classList.remove('active'); }
     else { catalogSizes.add(size); chip.classList.add('active'); }
     renderCatalog();
+    fetchCatalogView();
   });
 
   document.getElementById('catalogColorFilter').addEventListener('click', e => {
@@ -388,17 +530,32 @@ function initCatalogFilters(){
     document.querySelectorAll('#catalogColorFilter .color-pick')
       .forEach(el => el.classList.toggle('active', el === dot));
     renderCatalog();
+    fetchCatalogView();
   });
+
+  const sortSelect = document.getElementById('catalogSortSelect');
+  if(sortSelect){
+    sortSelect.addEventListener('change', e => {
+      catalogSort = sanitizeCatalogSort(e.target.value);
+      e.target.value = catalogSort;
+      renderCatalog();
+      fetchCatalogView();
+    });
+  }
 
   document.getElementById('resetFiltersBtn').addEventListener('click', () => {
     catalogCategory = 'todos';
     catalogSizes.clear();
     catalogColor = '';
+    catalogSort = 'destacados';
+    if(sortSelect) sortSelect.value = 'destacados';
     document.querySelectorAll('#catalogCatFilter .filter-opt')
       .forEach(el => el.classList.toggle('active', el.dataset.cat === 'todos'));
     document.querySelectorAll('#catalogSizeFilter .size-chip').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('#catalogColorFilter .color-pick').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('#catalogColorFilter .color-pick')
+      .forEach(el => el.classList.toggle('active', el.dataset.color === ''));
     renderCatalog();
+    fetchCatalogView();
   });
 }
 
@@ -483,6 +640,10 @@ async function loadProduct(id){
   } catch (_) {}
 
   currentProduct = p;
+  if(!p){
+    renderCuration(null);
+    return;
+  }
   selectedSize   = (p.sizes && p.sizes[0]) || 'S';
   selectedColor  = p.colorKey || 'negro';
 
@@ -496,23 +657,40 @@ async function loadProduct(id){
     ? p.colores
     : [{ slug: p.colorKey, nombre_color: p.colorName, codigo_hex: p.color, imagen_url: p.img }];
 
-  const thumbEntries = [];
+  const galleryEntries = Array.isArray(p.imagenes) && p.imagenes.length
+    ? [...p.imagenes]
+        .sort((a, b) => (b.es_principal ? 1 : 0) - (a.es_principal ? 1 : 0) || Number(a.orden || 0) - Number(b.orden || 0))
+        .map(img => ({ img: img.url_imagen, colorSlug: '', label: p.name || p.nombre_producto || 'Prenda' }))
+    : [];
+
+  const thumbEntries = [...galleryEntries];
   coloresList.forEach(c => {
     const cImg = c.imagen_url || p.img;
     if(cImg && !thumbEntries.some(t => t.img === cImg)){
-      thumbEntries.push({ img: cImg, colorSlug: c.slug, label: c.nombre_color });
+      thumbEntries.push({ img: cImg, colorSlug: c.slug, label: c.nombre_color || p.name || 'Prenda' });
     }
   });
-  while(thumbEntries.length < 3 && p.img){
-    thumbEntries.push({ img: p.img, colorSlug: selectedColor, label: p.colorName });
+  if(!thumbEntries.length && p.img){
+    thumbEntries.push({ img: p.img, colorSlug: selectedColor, label: p.colorName || p.name || 'Prenda' });
   }
 
   document.getElementById('pdpMain').innerHTML = mediaHTML(p);
-  document.getElementById('pdpThumbs').innerHTML = thumbEntries.slice(0, 3).map((t, i) => `
-    <div class="col-4 pdp-thumb">
-      <img src="${esc(t.img)}" alt="${esc(p.name)} - ${esc(t.label)}" data-thumb-color="${esc(t.colorSlug)}" class="${i === 0 ? 'active' : ''}" loading="lazy">
-    </div>
-  `).join('');
+  const pdpThumbsEl = document.getElementById('pdpThumbs');
+  if(pdpThumbsEl){
+    const thumbNodes = thumbEntries.map((t, i) => {
+      const col = document.createElement('div');
+      col.className = 'col-4 pdp-thumb';
+      const im = document.createElement('img');
+      im.src = t.img;
+      im.alt = `${p.name || p.nombre_producto || 'Prenda'} - ${t.label || ''}`;
+      if(t.colorSlug) im.setAttribute('data-thumb-color', t.colorSlug);
+      if(i === 0) im.className = 'active';
+      im.loading = 'lazy';
+      col.appendChild(im);
+      return col;
+    });
+    pdpThumbsEl.replaceChildren(...thumbNodes);
+  }
 
   renderPdpSizes(p);
 
@@ -524,6 +702,7 @@ async function loadProduct(id){
   `).join('');
 
   updatePdpVariantUI(p);
+  renderCuration(p);
   updateWishlistBadgesAndButtons();
 }
 
@@ -583,7 +762,14 @@ function initPdp(){
       renderPdpSizes(currentProduct);
       updatePdpVariantUI(currentProduct);
     } else if(thumbSrc && currentProduct){
-      document.getElementById('pdpMain').innerHTML = mediaHTML(currentProduct, thumbSrc);
+      const mainWrap = document.getElementById('pdpMain');
+      if(mainWrap){
+        const mainImg = document.createElement('img');
+        mainImg.src = thumbSrc;
+        mainImg.alt = String(currentProduct.name || currentProduct.nombre_producto || 'Prenda');
+        mainImg.loading = 'lazy';
+        mainWrap.replaceChildren(mainImg);
+      }
     }
   });
 
@@ -837,6 +1023,77 @@ function renderCart(){
   updateTtlIndicators();
 }
 
+async function quickAddFromWishlist(productId, triggerBtn){
+  let shouldOpenCart = false;
+  await OneStyleAPI.withButtonLoading(triggerBtn, 'Añadiendo...', async () => {
+    let freshProduct = byId(productId);
+    try {
+      const detRes = await OneStyleAPI.catalogo.detail(productId);
+      if(detRes && detRes.data){
+        freshProduct = detRes.data;
+        const idx = PRODUCTS.findIndex(item => String(item.id) === String(freshProduct.id));
+        if(idx >= 0) PRODUCTS[idx] = freshProduct;
+        else PRODUCTS.push(freshProduct);
+      }
+    } catch (_) {}
+
+    const firstVar = findFirstAvailableVariant(freshProduct);
+    if(!firstVar){
+      if(window.OSM && OSM.toast){
+        OSM.toast.warning('Todas las variantes de esta prenda están agotadas.');
+      }
+      return;
+    }
+
+    try {
+      const res = await OneStyleAPI.carrito.addItem({
+        fk_id_variante: firstVar.id_variante,
+        cantidad: 1
+      });
+      if(res && res.data){
+        applyBackendCartSummary(res.data);
+      }
+      try {
+        const refreshed = await OneStyleAPI.catalogo.detail(productId);
+        if(refreshed && refreshed.data){
+          const idx = PRODUCTS.findIndex(item => String(item.id) === String(refreshed.data.id));
+          if(idx >= 0) PRODUCTS[idx] = refreshed.data;
+        }
+      } catch (_) {}
+      if(currentProduct && String(currentProduct.id) === String(productId)){
+        await loadProduct(productId);
+      }
+      if(window.OSM && OSM.toast){
+        OSM.toast.success(`${freshProduct.name} (${firstVar.color} / Talla ${firstVar.talla}) añadida a tu bolsa.`);
+      }
+      shouldOpenCart = true;
+    } catch (err) {
+      try {
+        const refreshed = await OneStyleAPI.catalogo.detail(productId);
+        if(refreshed && refreshed.data){
+          const idx = PRODUCTS.findIndex(item => String(item.id) === String(refreshed.data.id));
+          if(idx >= 0) PRODUCTS[idx] = refreshed.data;
+        }
+      } catch (_) {}
+      if(window.OSM && OSM.toast){
+        OSM.toast.warning(err.message || 'No hay suficiente stock disponible.');
+      }
+    }
+  });
+
+  renderWishlistDrawer();
+
+  if(shouldOpenCart && cartDrawer){
+    const wishEl = document.getElementById('wishlistDrawer');
+    if(wishEl && wishlistDrawer && wishEl.classList.contains('show')){
+      wishEl.addEventListener('hidden.bs.offcanvas', () => cartDrawer.show(), { once: true });
+      wishlistDrawer.hide();
+    }else{
+      cartDrawer.show();
+    }
+  }
+}
+
 function initCart(){
   cartDrawer = new bootstrap.Offcanvas('#cartDrawer');
   const wishEl = document.getElementById('wishlistDrawer');
@@ -876,6 +1133,12 @@ function initCart(){
       e.preventDefault();
       e.stopPropagation();
       toggleWishlistProduct(wishToggle.getAttribute('data-wishlist'));
+      return;
+    }
+    const wishAdd = e.target.closest('[data-wishlist-add]');
+    if(wishAdd && !wishAdd.disabled){
+      e.preventDefault();
+      quickAddFromWishlist(wishAdd.getAttribute('data-wishlist-add'), wishAdd);
       return;
     }
     const wishRm = e.target.closest('[data-wishlist-remove]');
@@ -1034,12 +1297,25 @@ function initQuickView(){
 }
 
 /* ------------------------- Búsqueda ------------------------- */
-const normalize = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const normalize = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const QUICK_SEARCH_CHIPS = Object.freeze(['Corsets', 'Blanco', 'Noir', 'Denim', 'Vestidos']);
+
+function syncSearchChipsActive(term){
+  const q = normalize(term).trim();
+  document.querySelectorAll('#searchQuickChips .search-chip').forEach(chip => {
+    const val = normalize(chip.dataset.searchChip || '');
+    chip.classList.toggle('active', Boolean(q) && val === q);
+  });
+}
 
 function runSearch(){
-  const term = document.getElementById('searchInput').value.trim();
+  const input = document.getElementById('searchInput');
   const resultsWrap = document.getElementById('searchResultsWrap');
   const emptyWrap   = document.getElementById('searchEmptyWrap');
+  if(!input || !resultsWrap || !emptyWrap) return;
+
+  const term = input.value.trim().slice(0, 120);
+  syncSearchChipsActive(term);
 
   if(!term){ clearSearch(); return; }
 
@@ -1047,8 +1323,10 @@ function runSearch(){
   const results = PRODUCTS.filter(p =>
     normalize(p.name).includes(q) ||
     normalize(p.desc).includes(q) ||
-    normalize(p.cat).includes(q)  ||
-    normalize(p.colorName).includes(q));
+    normalize(p.cat).includes(q) ||
+    normalize(p.nombre_categoria).includes(q) ||
+    normalize(p.colorName).includes(q) ||
+    (Array.isArray(p.colores) && p.colores.some(c => normalize(c.nombre_color).includes(q))));
 
   if(results.length){
     resultsWrap.classList.remove('d-none');
@@ -1057,6 +1335,7 @@ function runSearch(){
     document.getElementById('searchCount').textContent =
       `${results.length} ${results.length === 1 ? 'resultado encontrado' : 'resultados encontrados'}`;
     document.getElementById('searchGrid').innerHTML = results.map(p => cardHTML(p)).join('');
+    updateWishlistBadgesAndButtons();
   }else{
     resultsWrap.classList.add('d-none');
     emptyWrap.classList.remove('d-none');
@@ -1065,18 +1344,41 @@ function runSearch(){
 }
 
 function clearSearch(){
-  document.getElementById('searchInput').value = '';
+  const input = document.getElementById('searchInput');
+  if(input) input.value = '';
   document.getElementById('searchResultsWrap').classList.add('d-none');
   document.getElementById('searchEmptyWrap').classList.remove('d-none');
   document.getElementById('noResultsHeading').textContent = 'No encontramos resultados';
+  syncSearchChipsActive('');
 }
 
 function initSearch(){
-  document.getElementById('searchBtn').addEventListener('click', runSearch);
-  document.getElementById('searchInput').addEventListener('keydown', e => {
-    if(e.key === 'Enter'){ e.preventDefault(); runSearch(); }
-  });
-  document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+  const searchInput = document.getElementById('searchInput');
+  const searchBtn   = document.getElementById('searchBtn');
+  const clearBtn    = document.getElementById('clearSearchBtn');
+  const chipsWrap   = document.getElementById('searchQuickChips');
+
+  if(searchBtn) searchBtn.addEventListener('click', runSearch);
+  if(searchInput){
+    const debouncedSearch = (window.OSM && typeof OSM.debounce === 'function')
+      ? OSM.debounce(runSearch, 250)
+      : runSearch;
+    searchInput.addEventListener('input', debouncedSearch);
+    searchInput.addEventListener('keydown', e => {
+      if(e.key === 'Enter'){ e.preventDefault(); runSearch(); }
+    });
+  }
+  if(chipsWrap){
+    chipsWrap.addEventListener('click', e => {
+      const chip = e.target.closest('[data-search-chip]');
+      if(!chip || !searchInput) return;
+      const chipTerm = String(chip.dataset.searchChip || '').trim();
+      if(!QUICK_SEARCH_CHIPS.includes(chipTerm)) return;
+      searchInput.value = chipTerm;
+      runSearch();
+    });
+  }
+  if(clearBtn) clearBtn.addEventListener('click', clearSearch);
 }
 
 /* ------------------------- Seguimiento en Tiempo Real y FSM (RF-PED-003) ------------------------- */
@@ -1140,8 +1442,309 @@ async function runTracking(){
   });
 }
 
+function isSafeWhatsAppUrl(url){
+  if(!url) return false;
+  try {
+    const parsed = new URL(String(url));
+    return parsed.protocol === 'https:' && (parsed.hostname === 'wa.me' || parsed.hostname === 'api.whatsapp.com');
+  } catch (_) {
+    return false;
+  }
+}
+
+function openOrderInTrackingView(orden, fromProfileModal = false){
+  if(!orden) return;
+  const codigo = String(orden.codigo_orden || `ORD-${orden.id_pedido || ''}`);
+  const desp = orden.datos_despacho || {};
+  const contactVal = desp.email || desp.telefono || (currentUser && currentUser.email) || '';
+
+  const orderInput = document.getElementById('trackOrderId');
+  const contactInput = document.getElementById('trackContact');
+  const resultIdEl = document.getElementById('trackResultId');
+  const resultWrap = document.getElementById('trackResult');
+
+  if(orderInput) orderInput.value = codigo;
+  if(contactInput) contactInput.value = contactVal;
+  if(resultIdEl) resultIdEl.textContent = `Pedido ${codigo}`;
+  applyTrackingStateUI(orden);
+  if(resultWrap) resultWrap.classList.remove('d-none');
+
+  if(fromProfileModal && profileModal){
+    profileModal.hide();
+  }
+  if(location.hash !== '#/seguimiento'){
+    location.hash = '#/seguimiento';
+  }
+  runTracking();
+  if(resultWrap){
+    setTimeout(() => resultWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+  }
+}
+
+function renderCustomerOrdersInto(containerEl, orders, { fromProfileModal = false } = {}){
+  if(!containerEl) return;
+  if(!Array.isArray(orders) || !orders.length){
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'text-muted small py-3 text-center';
+    emptyDiv.textContent = 'Aún no tienes pedidos registrados con tu cuenta.';
+    containerEl.replaceChildren(emptyDiv);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  orders.forEach(orden => {
+    const card = document.createElement('article');
+    card.className = 'customer-order-item';
+
+    const head = document.createElement('div');
+    head.className = 'customer-order-item__head';
+
+    const codeSpan = document.createElement('span');
+    codeSpan.className = 'customer-order-item__code';
+    codeSpan.textContent = String(orden.codigo_orden || `ORD-${orden.id_pedido || ''}`);
+
+    const stage = Number(orden.etapa_fsm ?? 1);
+    const badge = document.createElement('span');
+    let badgeVariant = 'osm-badge--gold';
+    if(stage === 0 || orden.estado === 'Cancelado') badgeVariant = 'osm-badge--danger';
+    else if(stage === 5 || orden.estado === 'Entregado') badgeVariant = 'osm-badge--success';
+    badge.className = `osm-badge ${badgeVariant}`;
+    badge.textContent = String(orden.estado || 'Registrado');
+
+    head.append(codeSpan, badge);
+
+    const meta = document.createElement('div');
+    meta.className = 'customer-order-item__meta';
+
+    const dateSpan = document.createElement('span');
+    const formattedDate = (window.OSM && typeof OSM.formatDate === 'function')
+      ? OSM.formatDate(orden.fecha_pedido || orden.fecha)
+      : String(orden.fecha_pedido || '—');
+    dateSpan.textContent = `Fecha: ${formattedDate}`;
+
+    const totalSpan = document.createElement('span');
+    totalSpan.className = 'customer-order-item__total';
+    totalSpan.textContent = money(orden.total || 0);
+
+    meta.append(dateSpan, totalSpan);
+
+    const actions = document.createElement('div');
+    actions.className = 'customer-order-item__actions';
+
+    const trackOrderBtn = document.createElement('button');
+    trackOrderBtn.type = 'button';
+    trackOrderBtn.className = 'osm-btn osm-btn--primary osm-btn--sm';
+    const trackIcon = document.createElement('i');
+    trackIcon.className = 'bi bi-truck';
+    trackIcon.setAttribute('aria-hidden', 'true');
+    const trackTxt = document.createElement('span');
+    trackTxt.textContent = 'Ver Seguimiento';
+    trackOrderBtn.append(trackIcon, trackTxt);
+    trackOrderBtn.addEventListener('click', () => openOrderInTrackingView(orden, fromProfileModal));
+    actions.appendChild(trackOrderBtn);
+
+    if(isSafeWhatsAppUrl(orden.url_comprobante_whatsapp)){
+      const waLink = document.createElement('a');
+      waLink.className = 'osm-btn osm-btn--whatsapp osm-btn--sm';
+      waLink.href = orden.url_comprobante_whatsapp;
+      waLink.target = '_blank';
+      waLink.rel = 'noopener noreferrer';
+      const waIcon = document.createElement('i');
+      waIcon.className = 'bi bi-whatsapp';
+      waIcon.setAttribute('aria-hidden', 'true');
+      const waTxt = document.createElement('span');
+      waTxt.textContent = 'Comprobante WhatsApp';
+      waLink.append(waIcon, waTxt);
+      actions.appendChild(waLink);
+    }
+
+    card.append(head, meta, actions);
+    fragment.appendChild(card);
+  });
+
+  containerEl.replaceChildren(fragment);
+}
+
+async function loadCustomerOrders(containerId, { fromProfileModal = false } = {}){
+  const listEl = document.getElementById(containerId);
+  const sectionEl = document.getElementById('myOrdersTrackingSection');
+  if(!listEl) return;
+
+  if(!currentUser || !OneStyleAPI.getToken()){
+    if(sectionEl) sectionEl.classList.add('d-none');
+    listEl.replaceChildren();
+    return;
+  }
+
+  if(sectionEl && !fromProfileModal){
+    sectionEl.classList.remove('d-none');
+  }
+
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'text-muted small py-2';
+  loadingDiv.textContent = 'Cargando historial de pedidos…';
+  listEl.replaceChildren(loadingDiv);
+
+  try {
+    const res = await OneStyleAPI.pedidos.myOrders();
+    const list = (res && Array.isArray(res.data)) ? res.data : [];
+    renderCustomerOrdersInto(listEl, list, { fromProfileModal });
+  } catch (err) {
+    if(err && (err.status === 401 || err.status === 403)){
+      if(sectionEl) sectionEl.classList.add('d-none');
+      const deniedDiv = document.createElement('div');
+      deniedDiv.className = 'text-muted small py-2';
+      deniedDiv.textContent = 'Inicia sesión para consultar tus pedidos.';
+      listEl.replaceChildren(deniedDiv);
+      return;
+    }
+    const errDiv = document.createElement('div');
+    errDiv.className = 'text-danger small py-2';
+    errDiv.textContent = (err && err.message) || 'No fue posible consultar tu historial de pedidos.';
+    listEl.replaceChildren(errDiv);
+  }
+}
+
+function renderCustomerTicketsInto(containerEl, tickets){
+  if(!containerEl) return;
+  if(!Array.isArray(tickets) || !tickets.length){
+    const emptyDiv = document.createElement('div');
+    emptyDiv.className = 'text-muted small py-3 text-center';
+    emptyDiv.textContent = 'No has enviado solicitudes de soporte todavía.';
+    containerEl.replaceChildren(emptyDiv);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  tickets.forEach(t => {
+    const card = document.createElement('article');
+    card.className = 'customer-order-item';
+
+    const head = document.createElement('div');
+    head.className = 'customer-order-item__head';
+
+    const titleWrap = document.createElement('div');
+    const codeSpan = document.createElement('span');
+    codeSpan.className = 'customer-order-item__code me-2';
+    codeSpan.textContent = `#${Number(t.id_ticket)}`;
+    const subjSpan = document.createElement('span');
+    subjSpan.className = 'fw-semibold';
+    subjSpan.textContent = String(t.asunto || 'Solicitud de soporte');
+    titleWrap.append(codeSpan, subjSpan);
+
+    const badge = document.createElement('span');
+    let badgeVariant = 'osm-badge--gold';
+    if(t.estado === 'RESUELTO') badgeVariant = 'osm-badge--success';
+    else if(t.estado === 'EN_PROCESO') badgeVariant = 'osm-badge--info';
+    badge.className = `osm-badge ${badgeVariant}`;
+    badge.textContent = String(t.estado || 'ABIERTO');
+    head.append(titleWrap, badge);
+
+    const meta = document.createElement('div');
+    meta.className = 'customer-order-item__meta';
+    const dateSpan = document.createElement('span');
+    const formattedDate = (window.OSM && typeof OSM.formatDate === 'function')
+      ? OSM.formatDate(t.created_at)
+      : String(t.created_at || '—');
+    dateSpan.textContent = t.codigo_orden
+      ? `Fecha: ${formattedDate} · Orden ${t.codigo_orden}`
+      : `Fecha: ${formattedDate}`;
+    meta.appendChild(dateSpan);
+
+    const msgEl = document.createElement('p');
+    msgEl.className = 'customer-ticket-msg';
+    msgEl.textContent = String(t.mensaje || '');
+
+    card.append(head, meta, msgEl);
+
+    if(t.respuesta_soporte){
+      const replyBox = document.createElement('div');
+      replyBox.className = 'customer-ticket-reply';
+      const replyLabel = document.createElement('span');
+      replyLabel.className = 'customer-ticket-reply__label';
+      replyLabel.textContent = 'Respuesta de Soporte OneStyleMariana';
+      const replyBody = document.createElement('div');
+      replyBody.textContent = String(t.respuesta_soporte);
+      replyBox.append(replyLabel, replyBody);
+      card.appendChild(replyBox);
+    }
+
+    fragment.appendChild(card);
+  });
+
+  containerEl.replaceChildren(fragment);
+}
+
+async function loadCustomerTickets(containerId, { fromProfileModal = false } = {}){
+  const listEl = document.getElementById(containerId);
+  const sectionEl = document.getElementById('myTicketsHelpSection');
+  if(!listEl) return;
+
+  if(!currentUser || !OneStyleAPI.getToken()){
+    if(sectionEl) sectionEl.classList.add('d-none');
+    listEl.replaceChildren();
+    return;
+  }
+
+  if(sectionEl && !fromProfileModal){
+    sectionEl.classList.remove('d-none');
+  }
+
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'text-muted small py-2';
+  loadingDiv.textContent = 'Cargando tus solicitudes…';
+  listEl.replaceChildren(loadingDiv);
+
+  try {
+    const res = await OneStyleAPI.faqs.myTickets();
+    const list = (res && Array.isArray(res.data)) ? res.data : [];
+    renderCustomerTicketsInto(listEl, list);
+  } catch (err) {
+    if(err && (err.status === 401 || err.status === 403)){
+      if(sectionEl) sectionEl.classList.add('d-none');
+      const deniedDiv = document.createElement('div');
+      deniedDiv.className = 'text-muted small py-2';
+      deniedDiv.textContent = 'Inicia sesión para consultar tus solicitudes de soporte.';
+      listEl.replaceChildren(deniedDiv);
+      return;
+    }
+    const errDiv = document.createElement('div');
+    errDiv.className = 'text-danger small py-2';
+    errDiv.textContent = (err && err.message) || 'No fue posible consultar tus tickets.';
+    listEl.replaceChildren(errDiv);
+  }
+}
+
+function setProfileModalTab(tabName = 'datos'){
+  const activeTab = (tabName === 'pedidos' || tabName === 'tickets') ? tabName : 'datos';
+  const datosEl   = document.getElementById('profileTabDatos');
+  const pedidosEl = document.getElementById('profileTabPedidos');
+  const ticketsEl = document.getElementById('profileTabTickets');
+  if(datosEl)   datosEl.classList.toggle('d-none', activeTab !== 'datos');
+  if(pedidosEl) pedidosEl.classList.toggle('d-none', activeTab !== 'pedidos');
+  if(ticketsEl) ticketsEl.classList.toggle('d-none', activeTab !== 'tickets');
+
+  document.querySelectorAll('#profileModalTabs [data-profile-tab]').forEach(btn => {
+    const active = btn.dataset.profileTab === activeTab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', String(active));
+  });
+
+  if(activeTab === 'pedidos'){
+    loadCustomerOrders('profileOrdersList', { fromProfileModal: true });
+  }else if(activeTab === 'tickets'){
+    loadCustomerTickets('profileTicketsList', { fromProfileModal: true });
+  }
+}
+
 function initTracking(){
   document.getElementById('trackBtn').addEventListener('click', runTracking);
+  const refreshMyOrdersBtn = document.getElementById('refreshMyOrdersBtn');
+  if(refreshMyOrdersBtn){
+    refreshMyOrdersBtn.addEventListener('click', () => {
+      loadCustomerOrders('trackingMyOrdersList', { fromProfileModal: false });
+    });
+  }
 }
 
 /* ------------------------- Módulo 1 y 4: Cuenta, Seguridad y Panel OMS ------------------------- */
@@ -1172,11 +1775,85 @@ function finishAuth(title, sub){
   updateAccountUI();
 }
 
+function syncCheckoutIdentityFields(){
+  const shipName    = document.getElementById('shipName');
+  const shipEmail   = document.getElementById('shipEmail');
+  const shipPhone   = document.getElementById('shipPhone');
+  const shipAddress = document.getElementById('shipAddress');
+  const noteEl      = document.getElementById('checkoutIdentityNote');
+  if(!shipName || !shipEmail) return;
+
+  const hasAuth = Boolean(currentUser && OneStyleAPI.getToken());
+  if(hasAuth){
+    const fullName = `${currentUser.nombre || ''} ${currentUser.apellido || ''}`.trim() || currentUser.email || '';
+    shipName.value = fullName;
+    shipEmail.value = currentUser.email || '';
+    shipName.readOnly = true;
+    shipEmail.readOnly = true;
+    shipName.classList.add('is-locked');
+    shipEmail.classList.add('is-locked');
+    shipName.setAttribute('aria-readonly', 'true');
+    shipEmail.setAttribute('aria-readonly', 'true');
+    if(shipPhone && !shipPhone.value.trim() && currentUser.telefono){
+      shipPhone.value = currentUser.telefono;
+    }
+    if(shipAddress && !shipAddress.value.trim() && currentUser.direccion){
+      shipAddress.value = currentUser.direccion;
+    }
+    if(noteEl) noteEl.classList.remove('d-none');
+  }else{
+    if(shipName.readOnly) shipName.value = '';
+    if(shipEmail.readOnly) shipEmail.value = '';
+    shipName.readOnly = false;
+    shipEmail.readOnly = false;
+    shipName.classList.remove('is-locked');
+    shipEmail.classList.remove('is-locked');
+    shipName.removeAttribute('aria-readonly');
+    shipEmail.removeAttribute('aria-readonly');
+    if(noteEl) noteEl.classList.add('d-none');
+  }
+}
+
+function bindPasswordHints(inputId, listId){
+  const input = document.getElementById(inputId);
+  const list  = document.getElementById(listId);
+  if(!input || !list || !window.OSM || !OSM.passwordPolicy) return;
+  const sync = () => {
+    const checks = OSM.passwordPolicy.check(input.value);
+    list.querySelectorAll('[data-pwd-rule]').forEach(li => {
+      const rule = li.dataset.pwdRule;
+      li.classList.toggle('is-valid', Boolean(checks[rule]));
+    });
+  };
+  input.addEventListener('input', sync);
+  sync();
+}
+
 function updateAccountUI(){
   const label   = document.getElementById('accountLabel');
   const icon    = document.getElementById('accountIcon');
   const roleEl  = document.getElementById('accountMenuRole');
   const omsItem = document.getElementById('omsMenuItem');
+  const myOrdersSec = document.getElementById('myOrdersTrackingSection');
+  const myTicketsSec = document.getElementById('myTicketsHelpSection');
+  const hasAuth = Boolean(currentUser && OneStyleAPI.getToken());
+
+  if(myOrdersSec){
+    myOrdersSec.classList.toggle('d-none', !hasAuth);
+    if(!hasAuth){
+      const trackList = document.getElementById('trackingMyOrdersList');
+      if(trackList) trackList.replaceChildren();
+    }
+  }
+  if(myTicketsSec){
+    myTicketsSec.classList.toggle('d-none', !hasAuth);
+    if(!hasAuth){
+      const helpList = document.getElementById('helpMyTicketsList');
+      if(helpList) helpList.replaceChildren();
+    }
+  }
+  syncCheckoutIdentityFields();
+
   if(currentUser){
     const displayName = currentUser.nombre || currentUser.name || currentUser.email;
     label.textContent = displayName.split(' ')[0];
@@ -1191,8 +1868,114 @@ function updateAccountUI(){
   }else{
     label.textContent = 'Iniciar Sesión';
     icon.className = 'bi bi-person';
+    const menuNameEl = document.getElementById('accountMenuName');
+    if(menuNameEl) menuNameEl.textContent = '—';
     if(roleEl) roleEl.textContent = '';
     if(omsItem) omsItem.classList.add('d-none');
+
+    const accountBtnEl = document.getElementById('accountBtn');
+    const accountMenuEl = document.getElementById('accountMenu');
+    if(accountBtnEl && window.bootstrap && bootstrap.Dropdown){
+      const dd = bootstrap.Dropdown.getInstance(accountBtnEl);
+      if(dd) dd.hide();
+    }
+    if(accountMenuEl) accountMenuEl.classList.remove('show');
+    if(accountBtnEl){
+      accountBtnEl.classList.remove('show');
+      accountBtnEl.setAttribute('aria-expanded', 'false');
+    }
+  }
+}
+
+function validateDocumentPair(tipo, doc){
+  if((tipo && !doc) || (!tipo && doc)){
+    return 'Indica tanto el tipo de documento como el número de documento.';
+  }
+  if(doc && !/^[A-Za-z0-9\-]{4,30}$/.test(doc)){
+    return 'El número de documento debe ser alfanumérico (4 a 30 caracteres).';
+  }
+  return null;
+}
+
+function loadGoogleIdentityScript(){
+  if(window.google && window.google.accounts && window.google.accounts.id){
+    return Promise.resolve();
+  }
+  const existing = document.querySelector('script[data-osm-gsi="1"]');
+  if(existing){
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('No se pudo cargar Google Identity Services.')), { once: true });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.defer = true;
+    s.dataset.osmGsi = '1';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('No se pudo cargar Google Identity Services.'));
+    document.head.appendChild(s);
+  });
+}
+
+async function initGoogleOAuth(){
+  const wrap    = document.getElementById('googleOAuthSection');
+  const btnHost = document.getElementById('googleSignInButton');
+  if(!wrap || !btnHost) return;
+
+  try {
+    const cfg = await OneStyleAPI.auth.getConfig();
+    const data = (cfg && cfg.data) || {};
+    if(!data.google_oauth_enabled || !data.google_client_id){
+      wrap.classList.add('d-none');
+      btnHost.replaceChildren();
+      return;
+    }
+
+    wrap.classList.remove('d-none');
+    await loadGoogleIdentityScript();
+    if(!(window.google && window.google.accounts && window.google.accounts.id)) return;
+
+    window.google.accounts.id.initialize({
+      client_id: data.google_client_id,
+      callback: async (response) => {
+        const errEl = document.getElementById('loginError');
+        if(errEl) errEl.classList.add('d-none');
+        if(!response || !response.credential){
+          showError('loginError', 'Google no devolvió un token válido.');
+          return;
+        }
+        try {
+          const res = await OneStyleAPI.auth.googleLogin({ id_token: response.credential });
+          currentUser = res.data.usuario;
+          OneStyleAPI.setSession(res.data.token, currentUser, {
+            refreshToken: res.data.refresh_token,
+            expiresIn: res.data.expires_in
+          });
+          if(window.OSM && OSM.toast){
+            OSM.toast.success(`Bienvenida, ${currentUser.nombre}.`);
+          }
+          finishAuth('¡Bienvenida!', `Iniciaste sesión con Google como ${currentUser.nombre} (${currentUser.rol}).`);
+          if(currentUser.rol === 'Administradora' || currentUser.rol === 'Vendedora'){
+            location.hash = '#/admin';
+          }
+        } catch (err) {
+          showError('loginError', err.message || 'No fue posible autenticar con Google.');
+        }
+      }
+    });
+
+    btnHost.replaceChildren();
+    window.google.accounts.id.renderButton(btnHost, {
+      theme: 'outline',
+      size: 'large',
+      width: 320,
+      text: 'continue_with'
+    });
+  } catch (_) {
+    wrap.classList.add('d-none');
   }
 }
 
@@ -1200,6 +1983,9 @@ function initAccount(){
   const menu = new bootstrap.Dropdown(document.getElementById('accountBtn'));
   recoveryModal = new bootstrap.Modal('#recoveryModal');
   profileModal  = new bootstrap.Modal('#profileModal');
+  bindPasswordHints('regPassword', 'regPwdHints');
+  bindPasswordHints('recNewPassword', 'recPwdHints');
+  initGoogleOAuth();
 
   document.getElementById('accountBtn').addEventListener('click', e => {
     if(currentUser){ menu.toggle(); }
@@ -1244,13 +2030,19 @@ function initAccount(){
   document.getElementById('registerForm').addEventListener('submit', async e => {
     e.preventDefault();
     document.getElementById('registerError').classList.add('d-none');
-    const nombre     = document.getElementById('regName').value.trim();
-    const apellido   = document.getElementById('regApellido').value.trim();
-    const email      = document.getElementById('regEmail').value.trim();
-    const telefono   = document.getElementById('regTelefono').value.trim();
-    const contrasena = document.getElementById('regPassword').value;
-    const p2         = document.getElementById('regPassword2').value;
-    const btn        = document.getElementById('registerBtn');
+    const nombre         = document.getElementById('regName').value.trim();
+    const apellido       = document.getElementById('regApellido').value.trim();
+    const email          = document.getElementById('regEmail').value.trim();
+    const telefono       = document.getElementById('regTelefono').value.trim();
+    const tipoEl         = document.getElementById('regTipoDocumento');
+    const docEl          = document.getElementById('regDocumento');
+    const dirEl          = document.getElementById('regDireccion');
+    const tipo_documento = tipoEl ? tipoEl.value.trim() : '';
+    const documento      = docEl ? docEl.value.trim() : '';
+    const direccion      = dirEl ? dirEl.value.trim() : '';
+    const contrasena     = document.getElementById('regPassword').value;
+    const p2             = document.getElementById('regPassword2').value;
+    const btn            = document.getElementById('registerBtn');
 
     if(!nombre || !apellido || !email || !contrasena || !p2){
       showError('registerError', 'Completa todos los campos obligatorios.');
@@ -1260,8 +2052,17 @@ function initAccount(){
       showError('registerError', 'Ingresa un correo electrónico válido.');
       return;
     }
-    if(contrasena.length < 8){
-      showError('registerError', 'La contraseña debe tener al menos 8 caracteres (RN-SEG-008).');
+    const docErr = validateDocumentPair(tipo_documento, documento);
+    if(docErr){
+      showError('registerError', docErr);
+      return;
+    }
+    if(direccion.length > 255){
+      showError('registerError', 'La dirección no puede superar 255 caracteres.');
+      return;
+    }
+    if(window.OSM && OSM.passwordPolicy && !OSM.passwordPolicy.isValid(contrasena)){
+      showError('registerError', OSM.passwordPolicy.message);
       return;
     }
     if(contrasena !== p2){
@@ -1271,7 +2072,12 @@ function initAccount(){
 
     await OneStyleAPI.withButtonLoading(btn, 'Registrando...', async () => {
       try {
-        const res = await OneStyleAPI.auth.register({ nombre, apellido, email, contrasena, telefono });
+        const res = await OneStyleAPI.auth.register({
+          nombre, apellido, email, contrasena, telefono,
+          tipo_documento: tipo_documento || null,
+          documento: documento || null,
+          direccion: direccion || null
+        });
         currentUser = res.data.usuario;
         OneStyleAPI.setSession(res.data.token, currentUser, {
           refreshToken: res.data.refresh_token,
@@ -1304,6 +2110,10 @@ function initAccount(){
     document.getElementById('recoveryError').classList.add('d-none');
     document.getElementById('recoverySuccess').classList.add('d-none');
     document.getElementById('resetPasswordForm').classList.add('d-none');
+    document.getElementById('recToken').value = '';
+    const recPwdEl = document.getElementById('recNewPassword');
+    recPwdEl.value = '';
+    recPwdEl.dispatchEvent(new Event('input'));
     recoveryModal.show();
   });
 
@@ -1324,9 +2134,6 @@ function initAccount(){
         okEl.textContent = res.message;
         okEl.classList.remove('d-none');
         document.getElementById('resetPasswordForm').classList.remove('d-none');
-        if(res.data && res.data.reset_token_demo){
-          document.getElementById('recToken').value = res.data.reset_token_demo;
-        }
       } catch (err) {
         showError('recoveryError', err.message);
       }
@@ -1344,6 +2151,11 @@ function initAccount(){
     const nueva_password = document.getElementById('recNewPassword').value;
     const btn            = document.getElementById('confirmResetBtn');
 
+    if(window.OSM && OSM.passwordPolicy && !OSM.passwordPolicy.isValid(nueva_password)){
+      showError('recoveryError', OSM.passwordPolicy.message);
+      return;
+    }
+
     await OneStyleAPI.withButtonLoading(btn, 'Actualizando...', async () => {
       try {
         const res = await OneStyleAPI.auth.resetPassword({ token, nueva_password });
@@ -1356,17 +2168,36 @@ function initAccount(){
     });
   });
 
-  // 5. Consulta y Actualización de Perfil (RF-SEG-010 / RF-SEG-011)
+  // 5. Consulta, Actualización de Perfil e Historial de Pedidos (RF-SEG-010 / RF-SEG-011 / RF-PED-003)
+  const profileTabsWrap = document.getElementById('profileModalTabs');
+  if(profileTabsWrap){
+    profileTabsWrap.addEventListener('click', e => {
+      const tabBtn = e.target.closest('[data-profile-tab]');
+      if(!tabBtn) return;
+      setProfileModalTab(tabBtn.dataset.profileTab);
+    });
+  }
+
   document.getElementById('openProfileBtn').addEventListener('click', async () => {
     document.getElementById('profileError').classList.add('d-none');
     document.getElementById('profileSuccess').classList.add('d-none');
+    setProfileModalTab('datos');
     try {
       const res = await OneStyleAPI.auth.getProfile();
       const u = res.data;
+      currentUser = u;
+      OneStyleAPI.setSession(OneStyleAPI.getToken(), currentUser);
+      updateAccountUI();
       document.getElementById('profNombre').value   = u.nombre || '';
       document.getElementById('profApellido').value = u.apellido || '';
       document.getElementById('profEmail').value    = u.email || '';
       document.getElementById('profTelefono').value = u.telefono || '';
+      const profTipoEl = document.getElementById('profTipoDocumento');
+      const profDocEl  = document.getElementById('profDocumento');
+      const profDirEl  = document.getElementById('profDireccion');
+      if(profTipoEl) profTipoEl.value = u.tipo_documento || '';
+      if(profDocEl)  profDocEl.value  = u.documento || '';
+      if(profDirEl)  profDirEl.value  = u.direccion || '';
       profileModal.show();
     } catch (err) {
       OneStyleAPI.clearSession();
@@ -1383,15 +2214,36 @@ function initAccount(){
     errEl.classList.add('d-none');
     okEl.classList.add('d-none');
 
-    const nombre   = document.getElementById('profNombre').value.trim();
-    const apellido = document.getElementById('profApellido').value.trim();
-    const email    = document.getElementById('profEmail').value.trim();
-    const telefono = document.getElementById('profTelefono').value.trim();
-    const btn      = document.getElementById('saveProfileBtn');
+    const nombre         = document.getElementById('profNombre').value.trim();
+    const apellido       = document.getElementById('profApellido').value.trim();
+    const email          = document.getElementById('profEmail').value.trim();
+    const telefono       = document.getElementById('profTelefono').value.trim();
+    const profTipoEl     = document.getElementById('profTipoDocumento');
+    const profDocEl      = document.getElementById('profDocumento');
+    const profDirEl      = document.getElementById('profDireccion');
+    const tipo_documento = profTipoEl ? profTipoEl.value.trim() : '';
+    const documento      = profDocEl ? profDocEl.value.trim() : '';
+    const direccion      = profDirEl ? profDirEl.value.trim() : '';
+    const btn            = document.getElementById('saveProfileBtn');
+
+    const docErr = validateDocumentPair(tipo_documento, documento);
+    if(docErr){
+      showError('profileError', docErr);
+      return;
+    }
+    if(direccion.length > 255){
+      showError('profileError', 'La dirección no puede superar 255 caracteres.');
+      return;
+    }
 
     await OneStyleAPI.withButtonLoading(btn, 'Guardando...', async () => {
       try {
-        const res = await OneStyleAPI.auth.updateProfile({ nombre, apellido, email, telefono });
+        const res = await OneStyleAPI.auth.updateProfile({
+          nombre, apellido, email, telefono,
+          tipo_documento: tipo_documento || null,
+          documento: documento || null,
+          direccion: direccion || null
+        });
         currentUser = res.data;
         OneStyleAPI.setSession(OneStyleAPI.getToken(), currentUser);
         updateAccountUI();
@@ -1507,6 +2359,39 @@ async function loadOmsDashboard(){
 
 /* ------------------------- Módulo 5: Centro de Ayuda y FAQ (RF-FAQ-001 a RF-FAQ-011) ------------------------- */
 let activeFaqCat = 'todas';
+const FAQ_VOTES_KEY = 'osm_faq_votes';
+
+function getVotedFaqs(){
+  try {
+    const raw = sessionStorage.getItem(FAQ_VOTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveFaqVote(fid, choice){
+  try {
+    const votes = getVotedFaqs();
+    votes[String(fid)] = choice;
+    sessionStorage.setItem(FAQ_VOTES_KEY, JSON.stringify(votes));
+  } catch (_) {}
+}
+
+function applyFaqVotedState(fid, choice, statusText){
+  document.querySelectorAll(`[data-faq-vote][data-faq-id="${Number(fid)}"]`).forEach(btn => {
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+    const isYes = btn.dataset.faqVote === 'true';
+    const isChosen = (choice === 'yes' && isYes) || (choice === 'no' && !isYes);
+    btn.classList.toggle('active', isChosen);
+  });
+  const statusEl = document.getElementById('faqVoteStatus' + Number(fid));
+  if(statusEl && statusText){
+    statusEl.textContent = statusText;
+  }
+}
 
 async function loadFaqsPublicas(){
   const accEl   = document.getElementById('faqAccordion');
@@ -1524,6 +2409,7 @@ async function loadFaqsPublicas(){
     const payload = (res && res.data) || {};
     const items = Array.isArray(payload.items) ? payload.items : [];
     const cats  = Array.isArray(payload.categorias) ? payload.categorias : [];
+    const votedMap = getVotedFaqs();
 
     if(waBtn && payload.canal_soporte && payload.canal_soporte.whatsapp_url){
       waBtn.setAttribute('href', payload.canal_soporte.whatsapp_url);
@@ -1543,34 +2429,40 @@ async function loadFaqsPublicas(){
       return;
     }
 
-    accEl.innerHTML = items.map((f, idx) => `
+    accEl.innerHTML = items.map((f, idx) => {
+      const fid = Number(f.id_faq);
+      const prevVote = votedMap[String(fid)] || '';
+      const disabledAttr = prevVote ? 'disabled aria-disabled="true"' : '';
+      const promptMsg = prevVote ? 'Ya calificaste esta respuesta.' : '¿Te resultó útil esta respuesta?';
+
+      return `
       <div class="accordion-item">
         <h2 class="accordion-header">
-          <button class="accordion-button ${idx === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse${Number(f.id_faq)}">
+          <button class="accordion-button ${idx === 0 ? '' : 'collapsed'}" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapse${fid}">
             <div>
               <small class="text-muted d-block">${esc(f.categoria)}</small>
               <span>${esc(f.pregunta)}</span>
             </div>
           </button>
         </h2>
-        <div id="faqCollapse${Number(f.id_faq)}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#faqAccordion">
+        <div id="faqCollapse${fid}" class="accordion-collapse collapse ${idx === 0 ? 'show' : ''}" data-bs-parent="#faqAccordion">
           <div class="accordion-body">
             <p class="mb-3">${esc(f.respuesta)}</p>
             <div class="d-flex justify-content-between align-items-center small text-muted border-top pt-2">
-              <span>¿Te resultó útil esta respuesta?</span>
+              <span id="faqVoteStatus${fid}">${esc(promptMsg)}</span>
               <div class="d-flex gap-2">
-                <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2" data-faq-vote="true" data-faq-id="${Number(f.id_faq)}">
-                  <i class="bi bi-hand-thumbs-up me-1"></i>Sí (<span id="faqHelpYes${Number(f.id_faq)}">${Number(f.helpful_count || 0)}</span>)
+                <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2 ${prevVote === 'yes' ? 'active' : ''}" data-faq-vote="true" data-faq-id="${fid}" ${disabledAttr}>
+                  <i class="bi bi-hand-thumbs-up me-1"></i>Sí (<span id="faqHelpYes${fid}">${Number(f.helpful_count || 0)}</span>)
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-faq-vote="false" data-faq-id="${Number(f.id_faq)}">
-                  <i class="bi bi-hand-thumbs-down me-1"></i>No (<span id="faqHelpNo${Number(f.id_faq)}">${Number(f.not_helpful_count || 0)}</span>)
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 ${prevVote === 'no' ? 'active' : ''}" data-faq-vote="false" data-faq-id="${fid}" ${disabledAttr}>
+                  <i class="bi bi-hand-thumbs-down me-1"></i>No (<span id="faqHelpNo${fid}">${Number(f.not_helpful_count || 0)}</span>)
                 </button>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (_) {}
 }
 
@@ -1599,20 +2491,44 @@ function initFaqHelpCenter(){
   if(accEl){
     accEl.addEventListener('click', async e => {
       const voteBtn = e.target.closest('[data-faq-vote]');
-      if(!voteBtn) return;
+      if(!voteBtn || voteBtn.disabled) return;
       const fid = Number(voteBtn.dataset.faqId);
       const helpful = voteBtn.dataset.faqVote === 'true';
-      await OneStyleAPI.withButtonLoading(voteBtn, null, async () => {
-        try {
-          const res = await OneStyleAPI.faqs.vote(fid, helpful);
-          if(res && res.data){
-            const yesEl = document.getElementById('faqHelpYes' + fid);
-            const noEl  = document.getElementById('faqHelpNo' + fid);
-            if(yesEl) yesEl.textContent = String(res.data.helpful_count);
-            if(noEl)  noEl.textContent  = String(res.data.not_helpful_count);
-          }
-        } catch (_) {}
+      const choice = helpful ? 'yes' : 'no';
+      if(getVotedFaqs()[String(fid)]){
+        applyFaqVotedState(fid, getVotedFaqs()[String(fid)], 'Ya registraste tu voto para esta respuesta.');
+        return;
+      }
+
+      const pairBtns = Array.from(document.querySelectorAll(`[data-faq-vote][data-faq-id="${fid}"]`));
+      pairBtns.forEach(b => {
+        b.disabled = true;
+        b.setAttribute('aria-disabled', 'true');
       });
+
+      try {
+        const res = await OneStyleAPI.faqs.vote(fid, helpful);
+        if(res && res.data){
+          const yesEl = document.getElementById('faqHelpYes' + fid);
+          const noEl  = document.getElementById('faqHelpNo' + fid);
+          if(yesEl) yesEl.textContent = String(res.data.helpful_count);
+          if(noEl)  noEl.textContent  = String(res.data.not_helpful_count);
+        }
+        saveFaqVote(fid, choice);
+        applyFaqVotedState(fid, choice, '¡Gracias por tu calificación!');
+      } catch (err) {
+        if(err && err.status === 409){
+          saveFaqVote(fid, choice);
+          applyFaqVotedState(fid, choice, err.message || 'Ya registraste tu voto para esta pregunta frecuente.');
+          return;
+        }
+        pairBtns.forEach(b => {
+          b.disabled = false;
+          b.removeAttribute('aria-disabled');
+        });
+        const statusEl = document.getElementById('faqVoteStatus' + fid);
+        if(statusEl) statusEl.textContent = (err && err.message) || 'No fue posible registrar tu voto.';
+      }
     });
   }
 
@@ -1643,11 +2559,21 @@ function initFaqHelpCenter(){
           okEl.textContent = `${res.message} (Ticket #${res.data.id_ticket})`;
           okEl.classList.remove('d-none');
           contactForm.reset();
+          if(currentUser && OneStyleAPI.getToken()){
+            loadCustomerTickets('helpMyTicketsList', { fromProfileModal: false });
+          }
         } catch (err) {
           errEl.textContent = err.message || 'No fue posible registrar tu solicitud.';
           errEl.classList.remove('d-none');
         }
       });
+    });
+  }
+
+  const refreshTicketsBtn = document.getElementById('refreshMyTicketsBtn');
+  if(refreshTicketsBtn){
+    refreshTicketsBtn.addEventListener('click', () => {
+      loadCustomerTickets('helpMyTicketsList', { fromProfileModal: false });
     });
   }
 }
@@ -1695,9 +2621,26 @@ function render(){
   document.querySelectorAll('.nav-route').forEach(a =>
     a.classList.toggle('active', a.dataset.route === r.name));
 
-  if(r.name === 'pdp')    loadProduct(r.id);
-  if(r.name === 'cuenta') resetAccountView();
-  if(r.name === 'ayuda')  loadFaqsPublicas();
+  if(r.name === 'pdp')      loadProduct(r.id);
+  if(r.name === 'checkout') syncCheckoutIdentityFields();
+  if(r.name === 'cuenta')   resetAccountView();
+  if(r.name === 'ayuda'){
+    loadFaqsPublicas();
+    if(currentUser && OneStyleAPI.getToken()){
+      loadCustomerTickets('helpMyTicketsList', { fromProfileModal: false });
+    }else{
+      const myTicketsSec = document.getElementById('myTicketsHelpSection');
+      if(myTicketsSec) myTicketsSec.classList.add('d-none');
+    }
+  }
+  if(r.name === 'seguimiento'){
+    if(currentUser && OneStyleAPI.getToken()){
+      loadCustomerOrders('trackingMyOrdersList', { fromProfileModal: false });
+    }else{
+      const myOrdersSec = document.getElementById('myOrdersTrackingSection');
+      if(myOrdersSec) myOrdersSec.classList.add('d-none');
+    }
+  }
   if(r.name === 'admin' && window.OSM && OSM.admin) OSM.admin.open(r.sub);
 
   const nav = document.getElementById('mainNav');
@@ -1711,6 +2654,7 @@ window.addEventListener('hashchange', render);
 
 window.addEventListener('osm:session-expired', () => {
   currentUser = null;
+  if(profileModal) profileModal.hide();
   updateAccountUI();
   if(window.OSM && OSM.toast){
     OSM.toast.warning('Tu sesión ha expirado por seguridad. Inicia sesión nuevamente.');
@@ -1738,11 +2682,13 @@ async function syncCatalogFromBackend(){
       renderHomeRecs();
       renderCatalog();
       renderCatalogBanner();
-      renderCuration();
+      renderCuration(currentProduct);
       renderSearchRecs();
       renderWishlistDrawer();
       const r = currentRoute();
       if(r.name === 'pdp') loadProduct(r.id);
+      const searchEl = document.getElementById('searchInput');
+      if(r.name === 'buscar' && searchEl && searchEl.value.trim()) runSearch();
     }
   } catch (_) {
     catalogLoaded = true;
@@ -1754,6 +2700,7 @@ async function syncCatalogFromBackend(){
 }
 
 window.syncCatalogFromBackend = syncCatalogFromBackend;
+window.loadFaqsPublicas = loadFaqsPublicas;
 window.syncCurrentUserFromStorage = () => {
   currentUser = OneStyleAPI.getSavedUser();
   updateAccountUI();

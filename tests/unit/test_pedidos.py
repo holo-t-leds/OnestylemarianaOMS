@@ -313,3 +313,169 @@ def test_rf_ped_003_004_api_rest_checkout_seguimiento_oms_y_reportes():
     assert r_rep.status_code == 200
     assert r_rep.get_json()["data"]["total_pedidos"] >= 1
 
+
+def test_checkout_identidad_inmutable_para_usuaria_autenticada():
+    """
+    Punto 5 (OWASP A01 / A04): Para usuarias autenticadas, el backend toma nombre_receptor
+    y email desde la sesión autenticada ignorando alteraciones enviadas desde el cliente,
+    conservando editables teléfono, dirección, barrio, ciudad y observaciones.
+    """
+    import uuid
+    from run import app, auth_service
+
+    client = app.test_client()
+    email_real = f"camila.checkout.{uuid.uuid4().hex[:8]}@test.co"
+    r_reg = client.post(
+        "/api/auth/register",
+        json={
+            "nombre": "Camila",
+            "apellido": "Rojas",
+            "email": email_real,
+            "contrasena": "CheckoutPass1",
+            "telefono": "3001119900",
+        },
+    )
+    if r_reg.status_code == 201:
+        token_user = r_reg.get_json()["data"]["token"]
+    else:
+        token_user = auth_service.validar_credenciales(email_real, "CheckoutPass1")
+
+    headers = {
+        "Authorization": f"Bearer {token_user}",
+        "X-Session-ID": f"test-checkout-auth-{uuid.uuid4().hex[:8]}",
+    }
+
+    r_add = client.post("/api/carrito/items", headers=headers, json={"fk_id_variante": 1, "cantidad": 1})
+    assert r_add.status_code == 201
+
+    # Intentar alterar nombre y correo en /api/carrito/despacho
+    r_desp = client.post(
+        "/api/carrito/despacho",
+        headers=headers,
+        json={
+            "nombre_receptor": "Atacante Suplantador",
+            "email": "impostor@evil.test",
+            "direccion_envio": "Cra 7 # 45-10",
+            "barrio": "Chapinero",
+            "ciudad": "Bogotá",
+            "telefono": "3005559988",
+            "observaciones": "Llamar antes de subir",
+        },
+    )
+    assert r_desp.status_code == 200
+    desp = r_desp.get_json()["data"]
+    assert desp["email"] == email_real
+    assert "Camila" in desp["nombre_receptor"]
+    assert "Atacante" not in desp["nombre_receptor"]
+
+    # Confirmar pedido enviando nuevamente identidad alterada en /api/pedidos/checkout
+    r_chk = client.post(
+        "/api/pedidos/checkout",
+        headers=headers,
+        json={
+            "nombre_receptor": "Otro Nombre Falso",
+            "email": "otro@evil.test",
+            "direccion_envio": "Cra 7 # 45-10 Apto 302",
+            "barrio": "Chapinero Alto",
+            "ciudad": "Bogotá D.C.",
+            "telefono": "3007776655",
+            "observaciones": "Entregar en recepción",
+        },
+    )
+    assert r_chk.status_code == 201
+    despacho_final = r_chk.get_json()["data"]["datos_despacho"]
+    assert despacho_final["email"] == email_real
+    assert "Camila" in despacho_final["nombre_receptor"]
+    assert "Otro Nombre" not in despacho_final["nombre_receptor"]
+    assert despacho_final["telefono"] == "3007776655"
+    assert despacho_final["direccion_envio"] == "Cra 7 # 45-10 Apto 302"
+    assert despacho_final["barrio"] == "Chapinero Alto"
+    assert despacho_final["ciudad"] == "Bogotá D.C."
+    assert despacho_final["observaciones"] == "Entregar en recepción"
+
+
+def test_reporte_vendedoras_fechas_csv_injection_y_rbac():
+    """
+    RF-PED-004 (OWASP A01 / CSV Injection):
+    - Endpoints de reporte por vendedora (/reporte y /reporte/csv) exclusivos para Administradora (403 a Vendedora/Clienta).
+    - Validación fecha_inicio <= fecha_fin (400 si rango invertido) y filtrado por fechas.
+    - Neutralización contra Formula Injection (=, +, -, @) en CSV.
+    """
+    import uuid
+    from datetime import datetime, timedelta
+    from run import app, auth_service, pedidos_service
+
+    client = app.test_client()
+    suffix = uuid.uuid4().hex[:8]
+    tok_adm = auth_service.validar_credenciales("admin@onestylemariana.co", "AdminOneStyle2026")
+    tok_ven = auth_service.validar_credenciales("vendedora@onestylemariana.co", "VentasOneStyle2026")
+    adm_hdr = {"Authorization": f"Bearer {tok_adm}"}
+    ven_hdr = {"Authorization": f"Bearer {tok_ven}"}
+
+    r_cli = client.post(
+        "/api/auth/register",
+        json={"nombre": "Paula", "apellido": "Rep", "email": f"paula.rep.{suffix}@test.co", "contrasena": "ReportPass1"},
+    )
+    assert r_cli.status_code == 201
+    tok_cli = r_cli.get_json()["data"]["token"]
+    cli_hdr = {"Authorization": f"Bearer {tok_cli}"}
+
+    # 1. RBAC: Vendedora y Clienta reciben 403
+    for bad_hdr in (ven_hdr, cli_hdr):
+        assert client.get("/api/admin/pedidos/reporte", headers=bad_hdr).status_code == 403
+        assert client.get("/api/admin/pedidos/reporte/csv", headers=bad_hdr).status_code == 403
+
+    # 2. Rango de fechas invertido devuelve 400
+    assert client.get("/api/admin/pedidos/reporte?fecha_inicio=2026-12-31&fecha_fin=2026-01-01", headers=adm_hdr).status_code == 400
+    assert client.get("/api/admin/pedidos/reporte/csv?fecha_inicio=2026-12-31&fecha_fin=2026-01-01", headers=adm_hdr).status_code == 400
+
+    # 3. Crear vendedora con nombre potencial de CSV Injection y asignar un pedido con fecha controlada
+    vend_formula_id = auth_service.registrar_personal(
+        tok_adm,
+        "=CMD|'/C calc'!A0",
+        "Asesora",
+        f"formula.{suffix}@onestyle.co",
+        "VentasFormula1",
+        "Vendedora",
+    )
+    ped_id = pedidos_service.crear_pedido(usuario_id=r_cli.get_json()["data"]["id_usuario"], items_carrito={1: 1})
+    hoy_dt = datetime.now()
+    ayer_str = (hoy_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    hoy_str = hoy_dt.strftime("%Y-%m-%d")
+    futuro_ini = (hoy_dt + timedelta(days=10)).strftime("%Y-%m-%d")
+    futuro_fin = (hoy_dt + timedelta(days=15)).strftime("%Y-%m-%d")
+
+    pedidos_service.pedidos[ped_id]["fk_id_vendedora_asig"] = vend_formula_id
+
+    try:
+        r_rep = client.get(
+            f"/api/admin/pedidos/reporte?fecha_inicio={ayer_str}&fecha_fin={hoy_str}",
+            headers=adm_hdr,
+        )
+        assert r_rep.status_code == 200
+        data_rep = r_rep.get_json()["data"]
+        vendedoras = data_rep.get("resumen_vendedoras", [])
+        match_v = next(v for v in vendedoras if v["vendedora_id"] == vend_formula_id)
+        assert match_v["cantidad_pedidos"] >= 1
+        assert match_v["total_vendido"] > 0
+
+        # Rango futuro sin pedidos excluye la orden
+        r_empty = client.get(
+            f"/api/admin/pedidos/reporte?fecha_inicio={futuro_ini}&fecha_fin={futuro_fin}",
+            headers=adm_hdr,
+        )
+        assert r_empty.status_code == 200
+        assert r_empty.get_json()["data"]["total_pedidos"] == 0
+
+        # Exportación CSV neutraliza Formula Injection
+        r_csv = client.get(
+            f"/api/admin/pedidos/reporte/csv?fecha_inicio={ayer_str}&fecha_fin={hoy_str}",
+            headers=adm_hdr,
+        )
+        assert r_csv.status_code == 200
+        assert "text/csv" in r_csv.headers.get("Content-Type", "")
+        csv_body = r_csv.get_data(as_text=True)
+        assert "'=CMD|'/C calc'!A0 Asesora" in csv_body
+    finally:
+        auth_service.desactivar_personal(tok_adm, vend_formula_id)
+

@@ -10,6 +10,7 @@ const OneStyleAPI = (() => {
   const EXPIRES_KEY = 'osm_token_expires_at';
   const SESSION_KEY = 'osm_cart_session_id';
   const REFRESH_MARGIN_MS = 90 * 1000; // Renovar cuando falten menos de 90 s
+  const ALLOWED_CATALOG_SORTS = Object.freeze(['destacados', 'priceAsc', 'priceDesc', 'name', 'stock']);
 
   function getSessionId() {
     try {
@@ -162,11 +163,12 @@ const OneStyleAPI = (() => {
       await refreshSession();
     }
 
+    const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
     const headers = {
       'Accept': 'application/json',
       'X-Session-ID': getSessionId()
     };
-    if (body !== null) {
+    if (body !== null && !isFormData) {
       headers['Content-Type'] = 'application/json';
     }
     const usedToken = auth ? getToken() : null;
@@ -177,7 +179,7 @@ const OneStyleAPI = (() => {
       response = await fetch(endpoint, {
         method,
         headers,
-        body: body !== null ? JSON.stringify(body) : null
+        body: body !== null ? (isFormData ? body : JSON.stringify(body)) : null
       });
     } catch (netErr) {
       const error = new Error('No fue posible conectar con el servidor.');
@@ -232,6 +234,7 @@ const OneStyleAPI = (() => {
 
   return {
     escapeHTML,
+    ALLOWED_CATALOG_SORTS,
     getToken,
     getSavedUser,
     setSession,
@@ -243,8 +246,18 @@ const OneStyleAPI = (() => {
 
     // Endpoints Módulo 1: Seguridad y Usuarios (RF-SEG-006 a RF-SEG-017)
     auth: {
-      register( { nombre, apellido, email, contrasena, telefono } ) {
-        return authAndStore('/api/auth/register', { nombre, apellido, email, contrasena, telefono });
+      getConfig() {
+        return request('/api/auth/config', { method: 'GET', auth: false });
+      },
+      googleLogin( { id_token } ) {
+        return authAndStore('/api/auth/google', { id_token });
+      },
+      register( { nombre, apellido, email, contrasena, telefono, tipo_documento, documento, direccion } ) {
+        const body = { nombre, apellido, email, contrasena, telefono };
+        if (tipo_documento !== undefined) body.tipo_documento = tipo_documento;
+        if (documento !== undefined) body.documento = documento;
+        if (direccion !== undefined) body.direccion = direccion;
+        return authAndStore('/api/auth/register', body);
       },
       login( { email, contrasena } ) {
         return authAndStore('/api/auth/login', { email, contrasena });
@@ -269,11 +282,15 @@ const OneStyleAPI = (() => {
       getProfile() {
         return request('/api/perfil', { method: 'GET', auth: true });
       },
-      updateProfile( { nombre, apellido, email, telefono } ) {
+      updateProfile( { nombre, apellido, email, telefono, tipo_documento, documento, direccion } ) {
+        const body = { nombre, apellido, email, telefono };
+        if (tipo_documento !== undefined) body.tipo_documento = tipo_documento;
+        if (documento !== undefined) body.documento = documento;
+        if (direccion !== undefined) body.direccion = direccion;
         return request('/api/perfil', {
           method: 'PUT',
           auth: true,
-          body: { nombre, apellido, email, telefono }
+          body
         });
       },
       changePassword( { contrasena_actual, nueva_password } ) {
@@ -316,7 +333,103 @@ const OneStyleAPI = (() => {
         alerts() { return request('/api/admin/inventario/alertas', { method: 'GET' }); },
         categories() { return request('/api/admin/categorias', { method: 'GET' }); },
         createCategory(payload) { return request('/api/admin/categorias', { method: 'POST', body: payload }); },
-        attributes() { return request('/api/atributos', { method: 'GET', auth: false }); }
+        updateCategory(id, payload) {
+          return request(`/api/admin/categorias/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
+        },
+        setCategoryState(id, estado) {
+          return request(`/api/admin/categorias/${encodeURIComponent(id)}/estado`, { method: 'PATCH', body: { estado: Boolean(estado) } });
+        },
+        deleteCategory(id) {
+          return request(`/api/admin/categorias/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        },
+        attributes() { return request('/api/atributos', { method: 'GET', auth: false }); },
+        adminAttributes() { return request('/api/admin/atributos', { method: 'GET' }); },
+        createSize(payload) { return request('/api/admin/tallas', { method: 'POST', body: payload }); },
+        updateSize(id, payload) {
+          return request(`/api/admin/tallas/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
+        },
+        setSizeState(id, estado) {
+          return request(`/api/admin/tallas/${encodeURIComponent(id)}/estado`, { method: 'PATCH', body: { estado: Boolean(estado) } });
+        },
+        deleteSize(id) {
+          return request(`/api/admin/tallas/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        },
+        createColor(payload) { return request('/api/admin/colores', { method: 'POST', body: payload }); },
+        updateColor(id, payload) {
+          return request(`/api/admin/colores/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
+        },
+        setColorState(id, estado) {
+          return request(`/api/admin/colores/${encodeURIComponent(id)}/estado`, { method: 'PATCH', body: { estado: Boolean(estado) } });
+        },
+        deleteColor(id) {
+          return request(`/api/admin/colores/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        },
+        listImages(prodId) {
+          return request(`/api/admin/productos/${encodeURIComponent(prodId)}/imagenes`, { method: 'GET' });
+        },
+        uploadImages(prodId, formData) {
+          return request(`/api/admin/productos/${encodeURIComponent(prodId)}/imagenes`, { method: 'POST', body: formData });
+        },
+        setPrincipalImage(prodId, imgId) {
+          return request(`/api/admin/productos/${encodeURIComponent(prodId)}/imagenes/${encodeURIComponent(imgId)}/principal`, { method: 'PATCH' });
+        },
+        reorderImages(prodId, ordenIds) {
+          return request(`/api/admin/productos/${encodeURIComponent(prodId)}/imagenes/reordenar`, {
+            method: 'PATCH',
+            body: { orden_ids: ordenIds }
+          });
+        },
+        deleteImage(prodId, imgId) {
+          return request(`/api/admin/productos/${encodeURIComponent(prodId)}/imagenes/${encodeURIComponent(imgId)}`, { method: 'DELETE' });
+        }
+      },
+      support: {
+        tickets(params = {}) { return request(`/api/v1/admin/support/tickets${toQuery(params)}`, { method: 'GET' }); },
+        updateTicket(ticketId, payload) {
+          return request(`/api/v1/admin/support/tickets/${encodeURIComponent(ticketId)}`, {
+            method: 'PATCH',
+            body: payload
+          });
+        }
+      },
+      audit: {
+        list(params = {}) { return request(`/api/admin/auditoria${toQuery(params)}`, { method: 'GET' }); }
+      },
+      faqs: {
+        list() { return request('/api/admin/faqs', { method: 'GET' }); },
+        categories() { return request('/api/admin/faqs/categorias', { method: 'GET' }); },
+        create(payload) { return request('/api/admin/faqs', { method: 'POST', body: payload }); },
+        update(id, payload) {
+          return request(`/api/admin/faqs/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
+        },
+        setState(id, estado) {
+          return request(`/api/admin/faqs/${encodeURIComponent(id)}/estado`, {
+            method: 'PATCH',
+            body: { estado }
+          });
+        },
+        reorder(id, orden) {
+          return request(`/api/admin/faqs/${encodeURIComponent(id)}/orden`, {
+            method: 'PATCH',
+            body: { orden: Number(orden) }
+          });
+        }
+      },
+      reports: {
+        sellers(params = {}) { return request(`/api/admin/pedidos/reporte${toQuery(params)}`, { method: 'GET' }); }
+      },
+      staff: {
+        list() { return request('/api/admin/personal', { method: 'GET' }); },
+        create(payload) { return request('/api/admin/personal', { method: 'POST', body: payload }); },
+        update(id, payload) {
+          return request(`/api/admin/personal/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
+        },
+        setState(id, estadoUsuario) {
+          return request(`/api/admin/personal/${encodeURIComponent(id)}/estado`, {
+            method: 'PATCH',
+            body: { estado_usuario: Boolean(estadoUsuario) }
+          });
+        }
       }
     },
 
@@ -325,7 +438,13 @@ const OneStyleAPI = (() => {
       list(params = {}) {
         const qs = new URLSearchParams();
         Object.entries(params).forEach(([k, v]) => {
-          if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+          if (v === undefined || v === null || v === '') return;
+          if (k === 'sort') {
+            const safeSort = String(v).trim();
+            qs.set('sort', ALLOWED_CATALOG_SORTS.includes(safeSort) ? safeSort : 'destacados');
+            return;
+          }
+          qs.set(k, v);
         });
         const queryString = qs.toString();
         return request(`/api/catalogo${queryString ? '?' + queryString : ''}`, { method: 'GET', auth: false });
@@ -441,16 +560,19 @@ const OneStyleAPI = (() => {
       vote(faqId, helpful = true) {
         return request(`/api/v1/faqs/${encodeURIComponent(faqId)}/vote/`, {
           method: 'POST',
-          auth: false,
+          auth: true,
           body: { helpful }
         });
       },
       sendContact({ nombre, email, asunto, mensaje, codigo_orden = '' }) {
         return request('/api/v1/support/contact/', {
           method: 'POST',
-          auth: false,
+          auth: true,
           body: { nombre, email, asunto, mensaje, codigo_orden }
         });
+      },
+      myTickets() {
+        return request('/api/v1/support/my-tickets', { method: 'GET', auth: true });
       },
       adminList() {
         return request('/api/admin/faqs', { method: 'GET', auth: true });

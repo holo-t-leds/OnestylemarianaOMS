@@ -1,8 +1,16 @@
+import csv
+import io
 import os
+import re
 import secrets
-from flask import Flask, g, jsonify, render_template, request, redirect, url_for, send_from_directory
+import uuid
+from datetime import datetime
+from flask import Flask, Response, g, jsonify, render_template, request, redirect, url_for, send_from_directory
+from PIL import Image, UnidentifiedImageError
 import pymysql
+from werkzeug.utils import secure_filename
 from app.database import get_db_connection
+from app.mailer import send_password_recovery_email
 from app.security import api_response, validate_whitelist_payload, extract_bearer_token
 from src.auditoria.service import AuditoriaService
 from src.auth.service import AuthService
@@ -14,9 +22,98 @@ from src.faq.service import FAQService, RateLimitError
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "onestyle-mariana-secret-key-2026")
 
+UPLOAD_PRODUCTS_DIR = os.path.abspath(os.path.join(app.static_folder, "img", "uploads"))
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB por archivo
+
+
+class ImageTooLargeError(ValueError):
+    """Excepción para archivos de imagen que exceden el límite permitido (HTTP 413)."""
+    pass
+
+
+def _validate_image_file(file_storage):
+    """
+    Valida carga segura de imágenes (OWASP Unrestricted File Upload):
+    - Lista blanca de extensiones (.jpg, .jpeg, .png, .webp)
+    - Tamaño máximo 5 MB
+    - Magic bytes reales + verificación estructural con Pillow y correspondencia de formato
+    """
+    raw_name = getattr(file_storage, "filename", "") or ""
+    safe_name = secure_filename(raw_name)
+    if not safe_name or "." not in safe_name:
+        raise ValueError("El archivo de imagen es inválido o no tiene extensión.")
+
+    ext = os.path.splitext(safe_name)[1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValueError("Extensión no permitida. Solo se aceptan imágenes JPG, JPEG, PNG o WEBP.")
+
+    raw_bytes = file_storage.read(MAX_IMAGE_BYTES + 1)
+    if not raw_bytes:
+        raise ValueError("El archivo de imagen está vacío.")
+    if len(raw_bytes) > MAX_IMAGE_BYTES:
+        raise ImageTooLargeError("La imagen supera el límite máximo de 5 MB.")
+
+    # Verificación estricta de magic bytes
+    if ext in (".jpg", ".jpeg"):
+        if not raw_bytes.startswith(b"\xff\xd8\xff"):
+            raise ValueError("El contenido del archivo no corresponde a una imagen JPEG válida.")
+        expected_fmt = "JPEG"
+        canonical_ext = ".jpg"
+        formato_upper = "JPG"
+    elif ext == ".png":
+        if not raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("El contenido del archivo no corresponde a una imagen PNG válida.")
+        expected_fmt = "PNG"
+        canonical_ext = ".png"
+        formato_upper = "PNG"
+    else:
+        if len(raw_bytes) < 12 or raw_bytes[:4] != b"RIFF" or raw_bytes[8:12] != b"WEBP":
+            raise ValueError("El contenido del archivo no corresponde a una imagen WEBP válida.")
+        expected_fmt = "WEBP"
+        canonical_ext = ".webp"
+        formato_upper = "WEBP"
+
+    try:
+        with Image.open(io.BytesIO(raw_bytes)) as img:
+            detected_fmt = (img.format or "").upper()
+            img.verify()
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
+        raise ValueError("El archivo no es una imagen válida o está corrupto.")
+
+    if detected_fmt != expected_fmt:
+        raise ValueError("El formato binario real de la imagen no coincide con su extensión.")
+
+    return raw_bytes, canonical_ext, formato_upper
+
+
+def _save_validated_image_bytes(raw_bytes: bytes, canonical_ext: str):
+    """Guarda la imagen con nombre UUID seguro únicamente dentro de UPLOAD_PRODUCTS_DIR."""
+    os.makedirs(UPLOAD_PRODUCTS_DIR, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{canonical_ext}"
+    target_path = os.path.abspath(os.path.join(UPLOAD_PRODUCTS_DIR, filename))
+    if os.path.commonpath([UPLOAD_PRODUCTS_DIR, target_path]) != UPLOAD_PRODUCTS_DIR:
+        raise ValueError("Ruta de almacenamiento fuera del directorio autorizado.")
+    with open(target_path, "wb") as f:
+        f.write(raw_bytes)
+    return f"img/uploads/{filename}", target_path
+
+
+def _delete_local_upload_if_safe(url_imagen: str | None):
+    """Elimina físicamente una imagen subida localmente validando que no haya Path Traversal."""
+    if not url_imagen or not str(url_imagen).startswith("img/uploads/"):
+        return
+    rel_name = os.path.basename(str(url_imagen))
+    target_path = os.path.abspath(os.path.join(UPLOAD_PRODUCTS_DIR, rel_name))
+    if os.path.commonpath([UPLOAD_PRODUCTS_DIR, target_path]) == UPLOAD_PRODUCTS_DIR and os.path.isfile(target_path):
+        try:
+            os.remove(target_path)
+        except OSError:
+            pass
+
 # Instancias de servicios de Módulos 1 al 5 (Seguridad, Catálogo, Carrito, Pedidos OMS y Centro de Ayuda FAQ)
 auditoria_service = AuditoriaService()
-auth_service = AuthService(auditoria_service=auditoria_service)
+auth_service = AuthService(auditoria_service=auditoria_service, persist_db=True)
 catalogo_service = CatalogoService(auditoria_service=auditoria_service, seed_defaults=True)
 pedidos_service = PedidosService(catalogo_service=catalogo_service, auditoria_service=auditoria_service)
 faq_service = FAQService(auditoria_service=auditoria_service, seed_defaults=True)
@@ -34,6 +131,23 @@ auth_service.crear_usuario_sistema(
 # =========================================================================
 # MIDDLEWARE DE CIBERSEGURIDAD OWASP: CABECERAS HTTP, NONCE CSP Y CORS
 # =========================================================================
+
+def _extract_client_metadata():
+    """
+    Extrae de forma segura la IP del cliente y el encabezado User-Agent (RF-SEG-006).
+    Usa request.remote_addr como fuente primaria y solo consulta X-Forwarded-For si TRUST_PROXY_HEADERS=true.
+    """
+    ip_val = request.remote_addr or "desconocida"
+    if os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() == "true":
+        xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        if xff and re.match(r"^[0-9a-fA-F:.]{3,45}$", xff):
+            ip_val = xff
+    ip_clean = re.sub(r"[\x00-\x1f\x7f]+", "", str(ip_val)).strip()[:45] or "desconocida"
+
+    ua_raw = request.headers.get("User-Agent") or ""
+    ua_clean = re.sub(r"[\x00-\x1f\x7f]+", " ", str(ua_raw)).strip()[:255] or None
+    return ip_clean, ua_clean
+
 
 @app.before_request
 def generate_csp_nonce():
@@ -58,6 +172,11 @@ def apply_security_headers(response):
 
     nonce = getattr(g, "csp_nonce", "")
     nonce_token = f" 'nonce-{nonce}'" if nonce else ""
+    google_oauth_enabled = bool((os.getenv("GOOGLE_CLIENT_ID") or "").strip())
+    gsi_script = " https://accounts.google.com/gsi/client" if google_oauth_enabled else ""
+    gsi_style = " https://accounts.google.com/gsi/style" if google_oauth_enabled else ""
+    gsi_connect = " https://accounts.google.com/gsi/" if google_oauth_enabled else ""
+    gsi_frame = "frame-src 'self' https://accounts.google.com/gsi/; " if google_oauth_enabled else ""
 
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -65,11 +184,12 @@ def apply_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        f"script-src 'self'{nonce_token} https://cdn.jsdelivr.net; "
-        f"style-src 'self'{nonce_token} https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        f"script-src 'self'{nonce_token} https://cdn.jsdelivr.net{gsi_script}; "
+        f"style-src 'self'{nonce_token} https://cdn.jsdelivr.net https://fonts.googleapis.com{gsi_style}; "
         "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com data:; "
         "img-src 'self' data: https://res.cloudinary.com; "
-        "connect-src 'self' https://cdn.jsdelivr.net; "
+        f"connect-src 'self' https://cdn.jsdelivr.net{gsi_connect}; "
+        f"{gsi_frame}"
         "object-src 'none'; "
         "frame-ancestors 'self'; "
         "form-action 'self'; "
@@ -173,6 +293,21 @@ def procesar_compra():
 # ENDPOINTS REST — MÓDULO 1: SEGURIDAD, USUARIOS Y AUDITORÍA (RF-SEG-001..017)
 # =========================================================================
 
+@app.route("/api/auth/config", methods=["GET"])
+def api_auth_config():
+    """Expone configuración pública de métodos de acceso (Google OAuth habilitado solo si existe GOOGLE_CLIENT_ID)."""
+    google_client_id = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+    return api_response(
+        "success",
+        "Configuración de autenticación.",
+        {
+            "google_oauth_enabled": bool(google_client_id),
+            "google_client_id": google_client_id or None,
+        },
+        200,
+    )
+
+
 @app.route("/api/auth/register", methods=["POST"])
 def api_register_cliente():
     """
@@ -182,17 +317,29 @@ def api_register_cliente():
         payload = request.get_json(silent=True)
         clean = validate_whitelist_payload(
             payload,
-            allowed_fields={"nombre", "apellido", "email", "contrasena", "telefono"},
+            allowed_fields={
+                "nombre", "apellido", "email", "contrasena", "telefono",
+                "tipo_documento", "documento", "direccion"
+            },
             required_fields={"nombre", "apellido", "email", "contrasena"}
         )
+        ip_address, user_agent = _extract_client_metadata()
         user_id = auth_service.registrar_cliente(
             nombre=clean["nombre"],
             apellido=clean["apellido"],
             email=clean["email"],
             contrasena=clean["contrasena"],
-            telefono=clean.get("telefono")
+            telefono=clean.get("telefono"),
+            tipo_documento=clean.get("tipo_documento"),
+            documento=clean.get("documento"),
+            direccion=clean.get("direccion")
         )
-        token = auth_service.validar_credenciales(clean["email"], clean["contrasena"])
+        token = auth_service.validar_credenciales(
+            clean["email"],
+            clean["contrasena"],
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         perfil = auth_service.obtener_perfil(token)
         return api_response(
             "success",
@@ -223,7 +370,13 @@ def api_login():
             allowed_fields={"email", "contrasena"},
             required_fields={"email", "contrasena"}
         )
-        token = auth_service.validar_credenciales(clean["email"], clean["contrasena"])
+        ip_address, user_agent = _extract_client_metadata()
+        token = auth_service.validar_credenciales(
+            clean["email"],
+            clean["contrasena"],
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
         perfil = auth_service.obtener_perfil(token)
         return api_response(
             "success",
@@ -248,8 +401,16 @@ def api_login():
 @app.route("/api/auth/google", methods=["POST"])
 def api_google_oauth():
     """
-    RF-SEG-008: Autenticación federada con Google OAuth 2.0.
+    RF-SEG-008: Autenticación federada con Google OAuth 2.0 (verificación criptográfica real de ID Token).
     """
+    google_client_id = (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+    if not google_client_id:
+        return api_response(
+            "error",
+            "El inicio de sesión con Google OAuth 2.0 no está configurado en el servidor.",
+            None,
+            501,
+        )
     try:
         payload = request.get_json(silent=True)
         clean = validate_whitelist_payload(
@@ -257,8 +418,18 @@ def api_google_oauth():
             allowed_fields={"id_token"},
             required_fields={"id_token"}
         )
-        google_data = auth_service.google_oauth_verify(clean["id_token"])
-        return api_response("success", "Token de Google verificado.", google_data, 200)
+        ip_address, user_agent = _extract_client_metadata()
+        sesion = auth_service.autenticar_con_google(
+            clean["id_token"],
+            client_id=google_client_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return api_response("success", "Inicio de sesión con Google exitoso.", sesion, 200)
+    except NotImplementedError as e:
+        return api_response("error", str(e), None, 501)
+    except PermissionError as e:
+        return api_response("error", str(e), None, 403)
     except ValueError as e:
         return api_response("error", str(e), None, 401)
 
@@ -288,13 +459,14 @@ def api_refresh_token():
 @app.route("/api/auth/logout", methods=["POST"])
 def api_logout():
     """
-    RF-SEG-009 / RN-SEG-009: Cierre de sesión seguro e invalidación inmediata de token.
+    RF-SEG-009 / RN-SEG-009 y RF-SEG-006: Cierre de sesión seguro e invalidación inmediata de token con traza de IP/UA.
     """
     token = extract_bearer_token()
     if not token:
         return api_response("error", "Token de autorización requerido.", None, 401)
     try:
-        auth_service.cerrar_sesion(token)
+        ip_address, user_agent = _extract_client_metadata()
+        auth_service.cerrar_sesion(token, ip_address=ip_address, user_agent=user_agent)
         return api_response("success", "Sesión cerrada correctamente.", None, 200)
     except ValueError as e:
         return api_response("error", str(e), None, 401)
@@ -304,6 +476,7 @@ def api_logout():
 def api_forgot_password():
     """
     RF-SEG-016 / RN-SEG-016: Solicitud de recuperación de contraseña con respuesta genérica anti-enumeración.
+    Nunca expone el token en la respuesta HTTP.
     """
     try:
         payload = request.get_json(silent=True)
@@ -316,13 +489,23 @@ def api_forgot_password():
         try:
             token_generado = auth_service.solicitar_recuperacion(clean["email"])
         except ValueError:
-            # RN-SEG-016: Si no existe, se muestra mensaje genérico por seguridad anti-enumeración
+            # RN-SEG-016: Si no existe, se responde de manera idéntica por seguridad anti-enumeración
             token_generado = None
+
+        if token_generado:
+            try:
+                send_password_recovery_email(
+                    clean["email"],
+                    token_generado,
+                    ttl_minutes=auth_service.RECOVERY_TTL_MINUTES,
+                )
+            except Exception as mail_err:
+                app.logger.warning("Fallo al despachar correo de recuperación: %s", mail_err)
 
         return api_response(
             "success",
-            "Si el correo ingresado se encuentra registrado, recibirás un enlace temporal de recuperación.",
-            {"reset_token_demo": token_generado},
+            "Si el correo ingresado se encuentra registrado, recibirás instrucciones temporales para restablecer tu contraseña.",
+            None,
             200
         )
     except ValueError as e:
@@ -364,15 +547,18 @@ def api_perfil():
         payload = request.get_json(silent=True)
         clean = validate_whitelist_payload(
             payload,
-            allowed_fields={"nombre", "apellido", "email", "telefono"},
+            allowed_fields={"nombre", "apellido", "email", "telefono", "tipo_documento", "documento", "direccion"},
             required_fields={"nombre", "apellido"}
         )
+        kwargs = {}
+        for opt_key in ("email", "telefono", "tipo_documento", "documento", "direccion"):
+            if opt_key in clean:
+                kwargs[opt_key] = clean[opt_key]
         actualizado = auth_service.actualizar_perfil(
             token=token,
             nombre=clean["nombre"],
             apellido=clean["apellido"],
-            email=clean.get("email"),
-            telefono=clean.get("telefono")
+            **kwargs
         )
         return api_response("success", "Perfil actualizado exitosamente.", actualizado, 200)
     except ValueError as e:
@@ -473,19 +659,147 @@ def api_admin_actualizar_personal(target_id: int):
 @app.route("/api/admin/personal/<int:target_id>/estado", methods=["PATCH"])
 def api_admin_baja_logica_personal(target_id: int):
     """
-    RF-SEG-015 / RN-SEG-015: Desactivación mediante baja lógica y revocación de sesiones.
+    RF-SEG-015 / RN-SEG-015: Desactivación o reactivación mediante baja lógica y revocación de sesiones.
     """
     token = extract_bearer_token()
     if not token or not auth_service.verificar_sesion(token):
         return api_response("error", "No autorizado.", None, 401)
 
     try:
-        auth_service.desactivar_personal(token, target_id)
-        return api_response("success", "Usuario desactivado mediante baja lógica.", {"id_usuario": target_id, "estado_usuario": False}, 200)
+        activar = False
+        raw_body = request.get_data(as_text=True) or ""
+        if raw_body.strip():
+            payload = request.get_json(silent=True)
+            clean = validate_whitelist_payload(
+                payload,
+                allowed_fields={"estado_usuario"},
+                required_fields={"estado_usuario"},
+            )
+            raw_state = clean["estado_usuario"]
+            if isinstance(raw_state, bool):
+                activar = raw_state
+            elif isinstance(raw_state, str) and raw_state.strip().lower() in ("true", "1", "activo"):
+                activar = True
+            elif isinstance(raw_state, str) and raw_state.strip().lower() in ("false", "0", "inactivo"):
+                activar = False
+            else:
+                raise ValueError("Valor inválido para 'estado_usuario'. Use booleano true o false.")
+
+        actualizado = auth_service.cambiar_estado_personal(token, target_id, activar=activar)
+        msg = "Usuario reactivado exitosamente." if actualizado["estado_usuario"] else "Usuario desactivado mediante baja lógica."
+        return api_response(
+            "success",
+            msg,
+            {"id_usuario": target_id, "estado_usuario": actualizado["estado_usuario"], "usuario": actualizado},
+            200,
+        )
     except PermissionError as e:
         return api_response("error", str(e), None, 403)
     except ValueError as e:
-        return api_response("error", str(e), None, 404)
+        msg = str(e)
+        status_code = 404 if "no existe" in msg.lower() else 400
+        return api_response("error", msg, None, status_code)
+
+
+def _require_admin_token():
+    """Valida token Bearer vigente y rol exclusivo Administradora (OWASP A01)."""
+    token = extract_bearer_token()
+    if not token or not auth_service.verificar_sesion(token):
+        return None, api_response("error", "No autorizado. Inicie sesión.", None, 401)
+    if auth_service.get_user_role(token) != "Administradora":
+        return None, api_response("error", "Acceso exclusivo para el rol Administradora.", None, 403)
+    return auth_service.get_user_id(token), None
+
+
+def _parse_date_range(fecha_inicio_raw: str | None, fecha_fin_raw: str | None):
+    """Parsea fechas YYYY-MM-DD opcionales y valida que fecha_inicio <= fecha_fin."""
+    dt_ini = None
+    dt_fin = None
+    if fecha_inicio_raw and str(fecha_inicio_raw).strip():
+        try:
+            d_ini = datetime.strptime(str(fecha_inicio_raw).strip(), "%Y-%m-%d")
+            dt_ini = d_ini.replace(hour=0, minute=0, second=0, microsecond=0)
+        except ValueError:
+            raise ValueError("El parámetro 'fecha_inicio' debe tener formato YYYY-MM-DD.")
+    if fecha_fin_raw and str(fecha_fin_raw).strip():
+        try:
+            d_fin = datetime.strptime(str(fecha_fin_raw).strip(), "%Y-%m-%d")
+            dt_fin = d_fin.replace(hour=23, minute=59, second=59, microsecond=999999)
+        except ValueError:
+            raise ValueError("El parámetro 'fecha_fin' debe tener formato YYYY-MM-DD.")
+    if dt_ini is not None and dt_fin is not None and dt_ini > dt_fin:
+        raise ValueError("La fecha de inicio no puede ser mayor que la fecha fin.")
+    return dt_ini, dt_fin
+
+
+def _csv_safe_cell(value) -> str:
+    """Neutraliza CSV / Formula Injection (OWASP) anteponiendo comilla simple a prefijos peligrosos."""
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
+def _build_csv_response(headers: list, rows: list, filename: str) -> Response:
+    """Construye una respuesta CSV UTF-8 protegida contra CSV Injection."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+    writer.writerow([_csv_safe_cell(h) for h in headers])
+    for row in rows:
+        writer.writerow([_csv_safe_cell(cell) for cell in row])
+    return Response(
+        buf.getvalue(),
+        status=200,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _consultar_auditoria_filtrada(rol: str, args) -> list:
+    tabla = args.get("tabla_afectada")
+    accion = args.get("tipo_accion")
+    usuario_id_param = args.get("usuario_id")
+    uid = int(usuario_id_param) if usuario_id_param and usuario_id_param.isdigit() else None
+    dt_ini, dt_fin = _parse_date_range(args.get("fecha_inicio"), args.get("fecha_fin"))
+    q = (args.get("q") or "").strip().lower()
+
+    logs = auditoria_service.consultar_logs(
+        rol_solicitante=rol,
+        usuario_id=uid,
+        tabla_afectada=tabla,
+        tipo_accion=accion,
+        fecha_inicio=dt_ini,
+        fecha_fin=dt_fin,
+    )
+    enriquecidos = []
+    for entry in sorted(logs, key=lambda l: l.get("id_log", 0), reverse=True):
+        item = dict(entry)
+        u_info = auth_service.usuarios.get(item.get("usuario_id"))
+        if u_info:
+            item["usuario_nombre"] = f"{u_info.get('nombre', '')} {u_info.get('apellido', '')}".strip()
+            item["usuario_email"] = u_info.get("email")
+        else:
+            item["usuario_nombre"] = f"Usuario #{item.get('usuario_id', 'Sistema')}"
+            item["usuario_email"] = None
+        if q:
+            haystack = " ".join([
+                str(item.get("usuario_nombre") or ""),
+                str(item.get("usuario_email") or ""),
+                str(item.get("usuario_id") or ""),
+                str(item.get("tipo_accion") or ""),
+                str(item.get("tabla_afectada") or ""),
+                str(item.get("ip_address") or ""),
+                str(item.get("user_agent") or ""),
+                str(item.get("valor_anterior") or ""),
+                str(item.get("valor_nuevo") or ""),
+                str(item.get("id_registro_afectado") or ""),
+            ]).lower()
+            if q not in haystack:
+                continue
+        enriquecidos.append(item)
+    return enriquecidos
 
 
 @app.route("/api/admin/auditoria", methods=["GET"])
@@ -499,20 +813,53 @@ def api_admin_auditoria():
 
     try:
         rol = auth_service.get_user_role(token)
-        tabla = request.args.get("tabla_afectada")
-        accion = request.args.get("tipo_accion")
-        usuario_id_param = request.args.get("usuario_id")
-        uid = int(usuario_id_param) if usuario_id_param and usuario_id_param.isdigit() else None
-
-        logs = auditoria_service.consultar_logs(
-            rol_solicitante=rol,
-            usuario_id=uid,
-            tabla_afectada=tabla,
-            tipo_accion=accion
-        )
-        return api_response("success", "Registros de auditoría consultados.", logs, 200)
+        enriquecidos = _consultar_auditoria_filtrada(rol, request.args)
+        return api_response("success", "Registros de auditoría consultados.", enriquecidos, 200)
     except PermissionError as e:
         return api_response("error", str(e), None, 403)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/auditoria/csv", methods=["GET"])
+def api_admin_auditoria_csv():
+    """Exportación CSV segura (anti Formula Injection) de logs de auditoría filtrados (exclusivo Administradora)."""
+    _, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        enriquecidos = _consultar_auditoria_filtrada("Administradora", request.args)
+        headers = [
+            "ID Log",
+            "Fecha y Hora",
+            "Usuario",
+            "Correo",
+            "Accion",
+            "IP",
+            "Dispositivo (User-Agent)",
+            "Tabla Afectada",
+            "ID Registro",
+            "Valor Anterior",
+            "Valor Nuevo",
+        ]
+        rows = [
+            [
+                item.get("id_log"),
+                item.get("fecha_accion") or item.get("fecha"),
+                item.get("usuario_nombre"),
+                item.get("usuario_email") or "",
+                item.get("tipo_accion"),
+                item.get("ip_address") or "",
+                item.get("user_agent") or "",
+                item.get("tabla_afectada"),
+                item.get("id_registro_afectado") if item.get("id_registro_afectado") is not None else "",
+                item.get("valor_anterior") if item.get("valor_anterior") is not None else "",
+                item.get("valor_nuevo") if item.get("valor_nuevo") is not None else "",
+            ]
+            for item in enriquecidos
+        ]
+        return _build_csv_response(headers, rows, "auditoria_onestyle.csv")
     except ValueError as e:
         return api_response("error", str(e), None, 400)
 
@@ -539,6 +886,9 @@ def vista_admin_catalogo():
     return redirect("/#/admin/catalogo", code=302)
 
 
+ALLOWED_CATALOG_SORTS = {"destacados", "priceAsc", "priceDesc", "name", "stock"}
+
+
 @app.route("/api/catalogo", methods=["GET"])
 def api_catalogo_publico():
     """
@@ -549,7 +899,8 @@ def api_catalogo_publico():
         talla = request.args.get("talla")
         color = request.args.get("color")
         termino = request.args.get("q") or request.args.get("termino")
-        sort = request.args.get("sort", "destacados")
+        raw_sort = (request.args.get("sort") or "destacados").strip()
+        sort = raw_sort if raw_sort in ALLOWED_CATALOG_SORTS else "destacados"
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 12))
 
@@ -598,8 +949,8 @@ def api_listar_atributos_publicos():
 
 @app.route("/api/admin/categorias", methods=["GET", "POST"])
 def api_admin_categorias():
-    """RF-CAT-008 y RF-CAT-009: Consulta y creación administrativa de categorías."""
-    uid, _, err_resp = _require_staff_token()
+    """RF-CAT-008 y RF-CAT-009: Consulta y creación administrativa de categorías (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
@@ -625,14 +976,18 @@ def api_admin_categorias():
         return api_response("error", str(e), None, 400)
 
 
-@app.route("/api/admin/categorias/<int:id_cat>", methods=["PUT"])
+@app.route("/api/admin/categorias/<int:id_cat>", methods=["PUT", "DELETE"])
 def api_admin_actualizar_categoria(id_cat: int):
-    """RF-CAT-010: Actualización de categoría maestra."""
-    uid, _, err_resp = _require_staff_token()
+    """RF-CAT-010: Actualización o eliminación segura de categoría maestra (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
     try:
+        if request.method == "DELETE":
+            catalogo_service.eliminar_categoria(id_cat, usuario_id=uid)
+            return api_response("success", "Categoría eliminada exitosamente.", {"id_categoria": id_cat}, 200)
+
         payload = request.get_json(silent=True)
         clean = validate_whitelist_payload(
             payload,
@@ -655,18 +1010,181 @@ def api_admin_actualizar_categoria(id_cat: int):
 
 @app.route("/api/admin/categorias/<int:id_cat>/estado", methods=["PATCH"])
 def api_admin_desactivar_categoria(id_cat: int):
-    """RF-CAT-011: Baja lógica de categoría (bloqueada si posee productos activos)."""
-    uid, _, err_resp = _require_staff_token()
+    """RF-CAT-011: Baja lógica o reactivación de categoría (bloquea baja si posee productos activos)."""
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
     try:
+        activar = False
+        raw_body = request.get_data(as_text=True) or ""
+        if raw_body.strip():
+            payload = request.get_json(silent=True)
+            clean = validate_whitelist_payload(payload, allowed_fields={"estado"}, required_fields={"estado"})
+            raw_est = clean["estado"]
+            if isinstance(raw_est, bool):
+                activar = raw_est
+            elif str(raw_est).strip().lower() in ("true", "1", "activo"):
+                activar = True
+            elif str(raw_est).strip().lower() in ("false", "0", "inactivo"):
+                activar = False
+            else:
+                raise ValueError("Valor inválido para 'estado'.")
+
+        if activar:
+            catalogo_service.activar_categoria(id_cat, usuario_id=uid)
+            return api_response("success", "Categoría activada.", {"id_categoria": id_cat, "estado": True}, 200)
+
         catalogo_service.desactivar_categoria(id_cat, usuario_id=uid)
         return api_response("success", "Categoría desactivada mediante baja lógica.", {"id_categoria": id_cat, "estado": False}, 200)
     except NotFoundError as e:
         return api_response("error", str(e), None, 404)
     except ConflictError as e:
         return api_response("error", str(e), None, 409)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/atributos", methods=["GET"])
+def api_admin_listar_atributos():
+    """RF-CAT-014: Listado completo administrativo de tallas y colores (incluye inactivos y conteo en uso)."""
+    _, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    return api_response("success", "Atributos maestros consultados.", catalogo_service.listar_atributos_maestros(solo_activos=False), 200)
+
+
+@app.route("/api/admin/tallas", methods=["POST"])
+def api_admin_crear_talla():
+    """RF-CAT-013: Creación de talla maestra (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"nombre_talla"}, required_fields={"nombre_talla"})
+        tid = catalogo_service.crear_talla(clean["nombre_talla"], usuario_id=uid)
+        return api_response("success", "Talla creada exitosamente.", {"id_talla": tid}, 201)
+    except ConflictError as e:
+        return api_response("error", str(e), None, 409)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/tallas/<int:id_talla>", methods=["PUT", "DELETE"])
+def api_admin_gestionar_talla(id_talla: int):
+    """RF-CAT-015: Edición o eliminación segura de talla maestra (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        if request.method == "DELETE":
+            catalogo_service.eliminar_talla(id_talla, usuario_id=uid)
+            return api_response("success", "Talla eliminada exitosamente.", {"id_talla": id_talla}, 200)
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"nombre_talla"}, required_fields={"nombre_talla"})
+        actualizada = catalogo_service.actualizar_talla(id_talla, clean["nombre_talla"], usuario_id=uid)
+        return api_response("success", "Talla actualizada.", actualizada, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ConflictError as e:
+        return api_response("error", str(e), None, 409)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/tallas/<int:id_talla>/estado", methods=["PATCH"])
+def api_admin_estado_talla(id_talla: int):
+    """RF-CAT-016: Activación o baja lógica de talla maestra (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"estado"}, required_fields={"estado"})
+        activar = clean["estado"] if isinstance(clean["estado"], bool) else str(clean["estado"]).lower() in ("true", "1", "activo")
+        if activar:
+            catalogo_service.activar_talla(id_talla, usuario_id=uid)
+            return api_response("success", "Talla activada.", {"id_talla": id_talla, "estado": True}, 200)
+        catalogo_service.desactivar_talla(id_talla, usuario_id=uid)
+        return api_response("success", "Talla desactivada mediante baja lógica.", {"id_talla": id_talla, "estado": False}, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/colores", methods=["POST"])
+def api_admin_crear_color():
+    """RF-CAT-013: Creación de color maestro con código HEX (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(
+            payload,
+            allowed_fields={"nombre_color", "codigo_hex"},
+            required_fields={"nombre_color"}
+        )
+        cid = catalogo_service.crear_color(
+            clean["nombre_color"],
+            codigo_hex=clean.get("codigo_hex", "#17140F"),
+            usuario_id=uid
+        )
+        return api_response("success", "Color creado exitosamente.", {"id_color": cid}, 201)
+    except ConflictError as e:
+        return api_response("error", str(e), None, 409)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/colores/<int:id_color>", methods=["PUT", "DELETE"])
+def api_admin_gestionar_color(id_color: int):
+    """RF-CAT-015: Edición o eliminación segura de color maestro (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        if request.method == "DELETE":
+            catalogo_service.eliminar_color(id_color, usuario_id=uid)
+            return api_response("success", "Color eliminado exitosamente.", {"id_color": id_color}, 200)
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"nombre_color", "codigo_hex"})
+        actualizado = catalogo_service.actualizar_color(
+            id_color,
+            nombre_color=clean.get("nombre_color"),
+            codigo_hex=clean.get("codigo_hex"),
+            usuario_id=uid
+        )
+        return api_response("success", "Color actualizado.", actualizado, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ConflictError as e:
+        return api_response("error", str(e), None, 409)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/colores/<int:id_color>/estado", methods=["PATCH"])
+def api_admin_estado_color(id_color: int):
+    """RF-CAT-016: Activación o baja lógica de color maestro (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"estado"}, required_fields={"estado"})
+        activar = clean["estado"] if isinstance(clean["estado"], bool) else str(clean["estado"]).lower() in ("true", "1", "activo")
+        if activar:
+            catalogo_service.activar_color(id_color, usuario_id=uid)
+            return api_response("success", "Color activado.", {"id_color": id_color, "estado": True}, 200)
+        catalogo_service.desactivar_color(id_color, usuario_id=uid)
+        return api_response("success", "Color desactivado mediante baja lógica.", {"id_color": id_color, "estado": False}, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
 
 
 @app.route("/api/admin/productos", methods=["GET", "POST"])
@@ -774,12 +1292,28 @@ def api_admin_actualizar_producto(id_prod: int):
                 "fk_id_categoria", "url_imagen_principal"
             }
         )
+        precio_parsed = None
+        if "precio_detallista" in clean:
+            raw_precio = clean["precio_detallista"]
+            if raw_precio is None or isinstance(raw_precio, bool):
+                raise ValueError("El precio debe ser un valor numérico mayor a cero.")
+            precio_parsed = float(raw_precio)
+            if precio_parsed != precio_parsed or abs(precio_parsed) == float("inf") or precio_parsed <= 0:
+                raise ValueError("RN-CAT-003: El precio actualizado debe ser mayor a cero.")
+
+        cat_parsed = None
+        if "fk_id_categoria" in clean:
+            raw_cat = clean["fk_id_categoria"]
+            if raw_cat is None or isinstance(raw_cat, bool):
+                raise ValueError("La categoría especificada es inválida.")
+            cat_parsed = int(raw_cat)
+
         catalogo_service.actualizar_producto(
             producto_id=id_prod,
             nombre=clean.get("nombre_producto"),
             descripcion=clean.get("descripcion_producto"),
-            precio=float(clean["precio_detallista"]) if "precio_detallista" in clean else None,
-            categoria_id=int(clean["fk_id_categoria"]) if "fk_id_categoria" in clean else None,
+            precio=precio_parsed,
+            categoria_id=cat_parsed,
             url_imagen_principal=clean.get("url_imagen_principal"),
             usuario_id=uid
         )
@@ -788,7 +1322,7 @@ def api_admin_actualizar_producto(id_prod: int):
         return api_response("error", str(e), None, 404)
     except ConflictError as e:
         return api_response("error", str(e), None, 409)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         return api_response("error", str(e), None, 400)
 
 
@@ -809,6 +1343,147 @@ def api_admin_visibilidad_producto(id_prod: int):
         return api_response("error", str(e), None, 404)
     except ValueError as e:
         return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/productos/<int:id_prod>/imagenes", methods=["GET", "POST"])
+def api_admin_imagenes_producto(id_prod: int):
+    """
+    RF-CAT-017: Consulta y carga segura multipart (1..N) de imágenes de prenda (exclusivo Administradora).
+    """
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    if request.method == "GET":
+        try:
+            imgs = catalogo_service.listar_imagenes_producto(id_prod)
+            prod = catalogo_service.productos.get(id_prod, {})
+            return api_response(
+                "success",
+                "Galería de imágenes consultada.",
+                {"imagenes": imgs, "url_imagen_principal": prod.get("url_imagen_principal")},
+                200,
+            )
+        except NotFoundError as e:
+            return api_response("error", str(e), None, 404)
+
+    saved_paths = []
+    try:
+        actuales = catalogo_service.listar_imagenes_producto(id_prod)
+        archivos = []
+        for field_name in ("imagenes", "files", "imagen"):
+            archivos.extend([f for f in request.files.getlist(field_name) if f and getattr(f, "filename", "")])
+        if not archivos:
+            for key in request.files:
+                archivos.extend([f for f in request.files.getlist(key) if f and getattr(f, "filename", "")])
+        if not archivos:
+            raise ValueError("Debes adjuntar al menos una imagen (.jpg, .jpeg, .png o .webp).")
+
+        if len(actuales) + len(archivos) > catalogo_service.MAX_IMAGENES_POR_PRODUCTO:
+            raise ValueError(
+                f"Supera el límite máximo de {catalogo_service.MAX_IMAGENES_POR_PRODUCTO} imágenes por prenda."
+            )
+
+        # Validar todo el lote ANTES de persistir archivos en disco
+        validated_batch = [_validate_image_file(fs) for fs in archivos]
+        make_first_principal = str(request.form.get("es_principal", "")).strip().lower() in ("true", "1", "yes", "si")
+
+        agregadas = []
+        for idx, (raw_bytes, canonical_ext, fmt_upper) in enumerate(validated_batch):
+            rel_url, abs_path = _save_validated_image_bytes(raw_bytes, canonical_ext)
+            saved_paths.append(abs_path)
+            img_id = catalogo_service.agregar_imagen_producto(
+                producto_id=id_prod,
+                url_imagen=rel_url,
+                formato=fmt_upper,
+                es_principal=(idx == 0 and make_first_principal),
+                usuario_id=uid,
+            )
+            agregadas.append({"id_imagen": img_id, "url_imagen": rel_url, "formato": fmt_upper})
+
+        galeria = catalogo_service.listar_imagenes_producto(id_prod)
+        return api_response(
+            "success",
+            f"Se subieron {len(agregadas)} imagen(es) exitosamente.",
+            {
+                "agregadas": agregadas,
+                "imagenes": galeria,
+                "url_imagen_principal": catalogo_service.productos[id_prod].get("url_imagen_principal"),
+            },
+            201,
+        )
+    except ImageTooLargeError as e:
+        return api_response("error", str(e), None, 413)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ValueError as e:
+        for p in saved_paths:
+            if os.path.isfile(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/productos/<int:id_prod>/imagenes/<int:id_img>/principal", methods=["PATCH"])
+def api_admin_imagen_principal(id_prod: int, id_img: int):
+    """RF-CAT-017: Marca una imagen de la galería como portada principal (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        galeria = catalogo_service.marcar_imagen_principal(id_prod, id_img, usuario_id=uid)
+        return api_response(
+            "success",
+            "Imagen principal actualizada.",
+            {"imagenes": galeria, "url_imagen_principal": catalogo_service.productos[id_prod].get("url_imagen_principal")},
+            200,
+        )
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+
+
+@app.route("/api/admin/productos/<int:id_prod>/imagenes/reordenar", methods=["PATCH"])
+def api_admin_reordenar_imagenes(id_prod: int):
+    """RF-CAT-017: Reordena las imágenes 1..N de una prenda (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(payload, allowed_fields={"orden_ids"}, required_fields={"orden_ids"})
+        orden_ids = clean["orden_ids"]
+        if not isinstance(orden_ids, list):
+            raise ValueError("El campo 'orden_ids' debe ser una lista de identificadores.")
+        galeria = catalogo_service.reordenar_imagenes_producto(id_prod, orden_ids, usuario_id=uid)
+        return api_response("success", "Orden de galería actualizado.", {"imagenes": galeria}, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except (ValueError, TypeError) as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/productos/<int:id_prod>/imagenes/<int:id_img>", methods=["DELETE"])
+def api_admin_eliminar_imagen(id_prod: int, id_img: int):
+    """RF-CAT-017: Elimina una imagen individual de la galería de prenda (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        res = catalogo_service.eliminar_imagen_producto(id_prod, id_img, usuario_id=uid)
+        _delete_local_upload_if_safe(res["eliminada"].get("url_imagen"))
+        return api_response(
+            "success",
+            "Imagen eliminada de la galería.",
+            {"imagenes": res["imagenes"], "url_imagen_principal": res["url_imagen_principal"]},
+            200,
+        )
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
 
 
 @app.route("/api/admin/variantes", methods=["POST"])
@@ -1011,6 +1686,19 @@ def api_carrito_item_especifico(variante_id: int):
         return api_response("error", str(e), None, 400)
 
 
+def _apply_authenticated_identity(clean: dict, uid):
+    """
+    Para usuarias autenticadas, la fuente de verdad de Nombre y Correo es siempre
+    el registro del usuario en el servidor, ignorando cualquier alteración en payload.
+    """
+    if uid is not None and uid in auth_service.usuarios:
+        u = auth_service.usuarios[uid]
+        full_name = f"{u.get('nombre', '')} {u.get('apellido', '')}".strip() or u["email"]
+        clean["nombre_receptor"] = full_name
+        clean["email"] = u["email"]
+    return clean
+
+
 @app.route("/api/carrito/despacho", methods=["POST"])
 def api_carrito_despacho():
     """
@@ -1018,6 +1706,8 @@ def api_carrito_despacho():
     (dirección exacta, barrio, ciudad, teléfono de contacto y observaciones).
     """
     carrito = _get_current_cart()
+    token = extract_bearer_token()
+    uid = auth_service.get_user_id(token) if token and auth_service.verificar_sesion(token) else None
     try:
         payload = request.get_json(silent=True)
         clean = validate_whitelist_payload(
@@ -1025,6 +1715,7 @@ def api_carrito_despacho():
             allowed_fields={"direccion_envio", "barrio", "ciudad", "telefono", "observaciones", "nombre_receptor", "email"},
             required_fields={"direccion_envio", "barrio", "ciudad", "telefono"}
         )
+        _apply_authenticated_identity(clean, uid)
         datos = carrito.capturar_datos_despacho(
             direccion_envio=clean["direccion_envio"],
             barrio=clean["barrio"],
@@ -1065,6 +1756,10 @@ def api_pedidos_checkout():
             }
         )
         datos_despacho = clean if any(k in clean for k in ("direccion_envio", "barrio", "ciudad", "telefono")) else None
+        if datos_despacho is not None:
+            _apply_authenticated_identity(datos_despacho, uid)
+        elif carrito.datos_despacho and uid is not None:
+            _apply_authenticated_identity(carrito.datos_despacho, uid)
         orden = pedidos_service.crear_pedido_desde_carrito(
             carrito=carrito,
             usuario_id=uid,
@@ -1218,25 +1913,130 @@ def api_admin_transicionar_estado_pedido(pedido_id: int):
         return api_response("error", str(e), None, 400)
 
 
-@app.route("/api/admin/pedidos/reporte", methods=["GET"])
-def api_admin_reporte_pedidos():
-    """
-    RF-PED-004 / RN-PED-004: Reporte consolidado de ventas e indicadores de gestión por estado y vendedora.
-    """
-    uid, rol, err_resp = _require_staff_token()
-    if err_resp:
-        return err_resp
-
-    estado = request.args.get("estado")
-    vendedora_param = request.args.get("vendedora_id")
-    vid = int(vendedora_param) if vendedora_param and vendedora_param.isdigit() else None
+def _generar_reporte_vendedoras_enriquecido(
+    uid: int,
+    rol: str,
+    estado: str | None,
+    vendedora_id: int | None,
+    fecha_inicio_raw: str | None,
+    fecha_fin_raw: str | None,
+) -> dict:
+    dt_ini, dt_fin = _parse_date_range(fecha_inicio_raw, fecha_fin_raw)
     reporte = pedidos_service.generar_reporte_ventas(
         rol_solicitante=rol,
         usuario_id=uid,
         estado=estado,
-        vendedora_id=vid
+        vendedora_id=vendedora_id,
+        fecha_inicio=dt_ini,
+        fecha_fin=dt_fin,
     )
-    return api_response("success", "Reporte consolidado de ventas generado.", reporte, 200)
+    resumen_enriquecido = []
+    for item in reporte.get("resumen_vendedoras_raw", []):
+        vid = int(item["vendedora_id"])
+        u_info = auth_service.usuarios.get(vid) or {}
+        nombre = f"{u_info.get('nombre', '')} {u_info.get('apellido', '')}".strip() or f"Vendedora #{vid}"
+        email = u_info.get("email") or ""
+        rol_u = u_info.get("rol") or "Vendedora"
+        estado_u = bool(u_info.get("estado_usuario", True)) if u_info else True
+        resumen_enriquecido.append({
+            "vendedora_id": vid,
+            "nombre": nombre,
+            "email": email,
+            "rol": rol_u,
+            "estado_usuario": estado_u,
+            "estado_cuenta": "Activo" if estado_u else "Inactivo",
+            "cantidad_pedidos": item["cantidad_pedidos"],
+            "pedidos_activos": item["pedidos_activos"],
+            "pedidos_cancelados": item["pedidos_cancelados"],
+            "total_vendido": item["total_vendido"],
+            "por_estado": item["por_estado"],
+        })
+    resumen_enriquecido.sort(key=lambda r: (r["total_vendido"], r["cantidad_pedidos"]), reverse=True)
+    reporte["resumen_vendedoras"] = resumen_enriquecido
+    reporte["filtros"] = {
+        "fecha_inicio": (fecha_inicio_raw or "").strip(),
+        "fecha_fin": (fecha_fin_raw or "").strip(),
+        "estado": (estado or "").strip(),
+    }
+    return reporte
+
+
+@app.route("/api/admin/pedidos/reporte", methods=["GET"])
+def api_admin_reporte_pedidos():
+    """
+    RF-PED-004 / RN-PED-004: Reporte consolidado de ventas e indicadores de gestión por estado y vendedora.
+    Acceso exclusivo Administradora (OWASP A01).
+    """
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        estado = request.args.get("estado")
+        vendedora_param = request.args.get("vendedora_id")
+        vid = int(vendedora_param) if vendedora_param and vendedora_param.isdigit() else None
+        reporte = _generar_reporte_vendedoras_enriquecido(
+            uid=uid,
+            rol="Administradora",
+            estado=estado,
+            vendedora_id=vid,
+            fecha_inicio_raw=request.args.get("fecha_inicio"),
+            fecha_fin_raw=request.args.get("fecha_fin"),
+        )
+        return api_response("success", "Reporte consolidado de ventas generado.", reporte, 200)
+    except PermissionError as e:
+        return api_response("error", str(e), None, 403)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/pedidos/reporte/csv", methods=["GET"])
+def api_admin_reporte_pedidos_csv():
+    """Exportación CSV segura (anti Formula Injection) de reportes por vendedora (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        estado = request.args.get("estado")
+        vendedora_param = request.args.get("vendedora_id")
+        vid = int(vendedora_param) if vendedora_param and vendedora_param.isdigit() else None
+        reporte = _generar_reporte_vendedoras_enriquecido(
+            uid=uid,
+            rol="Administradora",
+            estado=estado,
+            vendedora_id=vid,
+            fecha_inicio_raw=request.args.get("fecha_inicio"),
+            fecha_fin_raw=request.args.get("fecha_fin"),
+        )
+        headers = [
+            "ID Vendedora",
+            "Nombre",
+            "Correo",
+            "Rol",
+            "Estado Cuenta",
+            "Cantidad Pedidos",
+            "Pedidos Cancelados",
+            "Total Vendido (COP)",
+            "Detalle por Estado",
+        ]
+        rows = [
+            [
+                r["vendedora_id"],
+                r["nombre"],
+                r["email"],
+                r["rol"],
+                r["estado_cuenta"],
+                r["cantidad_pedidos"],
+                r["pedidos_cancelados"],
+                r["total_vendido"],
+                "; ".join(f"{k}: {v}" for k, v in (r.get("por_estado") or {}).items()),
+            ]
+            for r in reporte.get("resumen_vendedoras", [])
+        ]
+        return _build_csv_response(headers, rows, "reporte_vendedoras.csv")
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
 
 
 # =========================================================================
@@ -1279,7 +2079,7 @@ def api_v1_listar_faqs_publicas():
 @app.route("/api/v1/faqs/<int:faq_id>/vote", methods=["POST"])
 def api_v1_votar_faq(faq_id: int):
     """
-    Registra un voto de utilidad sobre una pregunta frecuente activa con protección anti-flooding.
+    Registra un único voto de utilidad por sesión o usuario sobre una FAQ activa (409 si repite).
     """
     try:
         payload = request.get_json(silent=True) or {}
@@ -1289,12 +2089,24 @@ def api_v1_votar_faq(faq_id: int):
         )
         util_val = clean.get("helpful", clean.get("util", True))
         es_util = str(util_val).lower() not in ("false", "0", "no")
+
+        token = extract_bearer_token()
+        session_hdr = (request.headers.get("X-Session-ID") or "").strip()
+        if token and auth_service.verificar_sesion(token):
+            voter_key = f"user:{auth_service.get_user_id(token)}"
+        elif session_hdr:
+            voter_key = f"sess:{session_hdr}"
+        else:
+            voter_key = f"ip:{_get_client_rate_key()}"
+
         resultado = faq_service.registrar_voto_faq(
             id_faq=faq_id,
             util=es_util,
-            client_key=_get_client_rate_key()
+            client_key=voter_key
         )
         return api_response("success", "Gracias por calificar esta respuesta.", resultado, 200)
+    except ConflictError as e:
+        return api_response("error", str(e), None, 409)
     except RateLimitError as e:
         return api_response("error", str(e), None, 429)
     except NotFoundError as e:
@@ -1318,14 +2130,19 @@ def api_v1_contacto_soporte():
             allowed_fields={"nombre", "email", "contacto", "asunto", "mensaje", "codigo_orden"},
             required_fields={"nombre", "asunto", "mensaje"}
         )
+        token = extract_bearer_token()
+        uid = auth_service.get_user_id(token) if token and auth_service.verificar_sesion(token) else None
         correo_contacto = clean.get("email") or clean.get("contacto") or ""
+        if uid is not None and uid in auth_service.usuarios and not correo_contacto:
+            correo_contacto = auth_service.usuarios[uid]["email"]
         ticket = faq_service.crear_ticket_soporte(
             nombre=clean["nombre"],
             contacto=correo_contacto,
             asunto=clean["asunto"],
             mensaje=clean["mensaje"],
             codigo_orden=clean.get("codigo_orden"),
-            client_key=_get_client_rate_key()
+            client_key=_get_client_rate_key(),
+            usuario_id=uid,
         )
         return api_response("success", "Tu solicitud de soporte ha sido registrada exitosamente.", ticket, 201)
     except RateLimitError as e:
@@ -1334,12 +2151,37 @@ def api_v1_contacto_soporte():
         return api_response("error", str(e), None, 400)
 
 
+@app.route("/api/v1/support/my-tickets", methods=["GET"])
+@app.route("/api/v1/support/my-tickets/", methods=["GET"])
+def api_v1_mis_tickets_soporte():
+    """
+    Buzón autenticado "Mis Tickets / Solicitudes" (OWASP IDOR-safe: filtra
+    estrictamente por la identidad del token Bearer activo).
+    """
+    token = extract_bearer_token()
+    if not token or not auth_service.verificar_sesion(token):
+        return api_response("error", "No autorizado. Inicie sesión.", None, 401)
+    uid = auth_service.get_user_id(token)
+    u = auth_service.usuarios.get(uid) or {}
+    tickets = faq_service.listar_tickets_usuario(usuario_id=uid, email=u.get("email"))
+    return api_response("success", "Solicitudes de soporte consultadas.", tickets, 200)
+
+
+@app.route("/api/admin/faqs/categorias", methods=["GET"])
+def api_admin_faq_categorias():
+    """Lista categorías temáticas disponibles para el formulario administrativo de FAQs (exclusivo Administradora)."""
+    _, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+    return api_response("success", "Categorías temáticas de FAQs.", faq_service.listar_categorias_publicas(), 200)
+
+
 @app.route("/api/admin/faqs", methods=["GET", "POST"])
 def api_admin_faqs():
     """
-    RF-FAQ-005 y RF-FAQ-006: Listado completo y creación administrativa de preguntas frecuentes.
+    RF-FAQ-005 y RF-FAQ-006: Listado completo y creación administrativa de preguntas frecuentes (exclusivo Administradora).
     """
-    uid, _, err_resp = _require_staff_token()
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
@@ -1353,6 +2195,8 @@ def api_admin_faqs():
             allowed_fields={"pregunta", "respuesta", "id_categoria", "orden"},
             required_fields={"pregunta", "respuesta", "id_categoria", "orden"}
         )
+        if isinstance(clean["id_categoria"], bool) or isinstance(clean["orden"], bool):
+            raise ValueError("Categoría y orden deben ser valores numéricos enteros.")
         fid = faq_service.crear_faq(
             pregunta=clean["pregunta"],
             respuesta=clean["respuesta"],
@@ -1361,14 +2205,14 @@ def api_admin_faqs():
             usuario_creador=str(uid)
         )
         return api_response("success", "Pregunta frecuente creada exitosamente.", {"id_faq": fid}, 201)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         return api_response("error", str(e), None, 400)
 
 
 @app.route("/api/admin/faqs/<int:faq_id>", methods=["PUT"])
 def api_admin_actualizar_faq(faq_id: int):
-    """RF-FAQ-007: Modificación de pregunta frecuente."""
-    uid, _, err_resp = _require_staff_token()
+    """RF-FAQ-007: Modificación de pregunta frecuente (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
@@ -1379,6 +2223,8 @@ def api_admin_actualizar_faq(faq_id: int):
             allowed_fields={"pregunta", "respuesta", "id_categoria", "orden"},
             required_fields={"pregunta", "respuesta", "id_categoria", "orden"}
         )
+        if isinstance(clean["id_categoria"], bool) or isinstance(clean["orden"], bool):
+            raise ValueError("Categoría y orden deben ser valores numéricos enteros.")
         faq_service.actualizar_faq(
             id_faq=faq_id,
             pregunta=clean["pregunta"],
@@ -1390,14 +2236,43 @@ def api_admin_actualizar_faq(faq_id: int):
         return api_response("success", "Pregunta frecuente actualizada.", {"id_faq": faq_id}, 200)
     except NotFoundError as e:
         return api_response("error", str(e), None, 404)
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/admin/faqs/<int:faq_id>/orden", methods=["PATCH"])
+def api_admin_reordenar_faq(faq_id: int):
+    """RF-FAQ-010: Reordenamiento de prioridad/posición de pregunta frecuente (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        payload = request.get_json(silent=True)
+        clean = validate_whitelist_payload(
+            payload,
+            allowed_fields={"orden"},
+            required_fields={"orden"}
+        )
+        if isinstance(clean["orden"], bool):
+            raise ValueError("El orden debe ser un número entero positivo.")
+        actualizadas = faq_service.reordenar_faq(faq_id, int(clean["orden"]), str(uid))
+        return api_response(
+            "success",
+            "Orden de la pregunta frecuente actualizado.",
+            {"id_faq": faq_id, "items": actualizadas},
+            200,
+        )
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except (ValueError, TypeError) as e:
         return api_response("error", str(e), None, 400)
 
 
 @app.route("/api/admin/faqs/<int:faq_id>/estado", methods=["PATCH"])
 def api_admin_estado_faq(faq_id: int):
-    """RF-FAQ-008 y RF-FAQ-009: Baja lógica o reactivación inmediata de pregunta frecuente."""
-    uid, _, err_resp = _require_staff_token()
+    """RF-FAQ-008 y RF-FAQ-009: Baja lógica o reactivación inmediata de pregunta frecuente (exclusivo Administradora)."""
+    uid, err_resp = _require_admin_token()
     if err_resp:
         return err_resp
 
@@ -1410,6 +2285,63 @@ def api_admin_estado_faq(faq_id: int):
         )
         faq_service.cambiar_estado(faq_id, clean["estado"], str(uid))
         return api_response("success", "Estado de la FAQ actualizado.", {"id_faq": faq_id, "estado": clean["estado"]}, 200)
+    except NotFoundError as e:
+        return api_response("error", str(e), None, 404)
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/v1/admin/support/tickets", methods=["GET"])
+@app.route("/api/v1/admin/support/tickets/", methods=["GET"])
+def api_v1_admin_listar_tickets():
+    """Consulta administrativa de tickets de soporte (exclusivo Administradora)."""
+    _, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        estado = request.args.get("estado")
+        tickets = faq_service.listar_tickets_admin(estado=estado)
+        open_count = sum(1 for t in faq_service.tickets.values() if t.get("estado") == "ABIERTO")
+        return api_response(
+            "success",
+            "Tickets de soporte consultados.",
+            {"items": tickets, "tickets_abiertos": open_count},
+            200,
+        )
+    except ValueError as e:
+        return api_response("error", str(e), None, 400)
+
+
+@app.route("/api/v1/admin/support/tickets/<int:ticket_id>", methods=["PATCH"])
+@app.route("/api/v1/admin/support/tickets/<int:ticket_id>/", methods=["PATCH"])
+def api_v1_admin_actualizar_ticket(ticket_id: int):
+    """Respuesta y transición FSM de tickets (ABIERTO -> EN_PROCESO -> RESUELTO)."""
+    uid, err_resp = _require_admin_token()
+    if err_resp:
+        return err_resp
+
+    try:
+        payload = request.get_json(silent=True) or {}
+        clean = validate_whitelist_payload(
+            payload,
+            allowed_fields={"estado", "nuevo_estado", "respuesta", "respuesta_soporte"},
+        )
+        target_state = clean.get("estado") if "estado" in clean else clean.get("nuevo_estado")
+        reply_text = clean.get("respuesta") if "respuesta" in clean else clean.get("respuesta_soporte")
+        updated = faq_service.actualizar_ticket(
+            id_ticket=ticket_id,
+            nuevo_estado=target_state,
+            respuesta=reply_text,
+            usuario_id=uid,
+        )
+        open_count = sum(1 for t in faq_service.tickets.values() if t.get("estado") == "ABIERTO")
+        return api_response(
+            "success",
+            "Ticket actualizado exitosamente.",
+            {"ticket": updated, "tickets_abiertos": open_count},
+            200,
+        )
     except NotFoundError as e:
         return api_response("error", str(e), None, 404)
     except ValueError as e:

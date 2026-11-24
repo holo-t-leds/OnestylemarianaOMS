@@ -123,8 +123,8 @@
           </div>
         </div>
         <div class="col-lg-6">
-          <div class="hero-editorial__frame">
-            <img src="img/corset-canela.jpg" alt="Modelo luciendo corset estructurado de alta costura en tonos marfil, canela y dorado">
+          <div class="hero-editorial__frame--circular">
+            <img src="img/logo.jpg" alt="Modelo luciendo corset estructurado de alta costura en tonos marfil, canela y dorado">
           </div>
         </div>
       </div>
@@ -245,7 +245,18 @@
           Colección Primavera / Verano 2026 — <span class="text-bronze-italic">Exclusividad Importada</span>
         </h1>
       </div>
-      <span class="text-muted small tabular-nums" id="catalogResultsCount">Mostrando 0 resultados</span>
+      <div class="catalog-header-controls">
+        <span class="text-muted small tabular-nums" id="catalogResultsCount">Mostrando 0 resultados</span>
+        <div class="catalog-sort-pill">
+          <label class="catalog-sort-pill__label" for="catalogSortSelect">Ordenar por:</label>
+          <select class="catalog-sort-pill__select" id="catalogSortSelect" aria-label="Ordenar catálogo">
+            <option value="destacados">Destacados</option>
+            <option value="priceAsc">Menor Precio</option>
+            <option value="priceDesc">Mayor Precio</option>
+            <option value="stock">Mayor Stock</option>
+          </select>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -387,7 +398,10 @@
         </div>
         <div id="cartItemsWrap"></div>
 
-        <h2 class="section-title mt-5 mb-4">Envío y Contacto en Colombia</h2>
+        <h2 class="section-title mt-5 mb-2">Envío y Contacto en Colombia</h2>
+        <p class="small text-muted mb-3 d-none" id="checkoutIdentityNote">
+          <i class="bi bi-shield-check me-1" aria-hidden="true"></i>Nombre y correo vinculados a tu cuenta. Puedes editar tu teléfono y dirección de entrega.
+        </p>
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label-osm" for="shipName">Nombre completo</label>
@@ -447,9 +461,17 @@
 <!-- ============================= BÚSQUEDA ============================= -->
 <section class="view" id="view-buscar">
   <div class="container py-5">
-    <div class="search-box mx-auto mb-5">
+    <div class="search-box mx-auto mb-3">
       <input type="text" class="form-control" id="searchInput" name="termino" placeholder="Buscar prendas, colecciones…">
       <button class="btn btn-osm btn-gold" id="searchBtn">Buscar</button>
+    </div>
+    <div class="search-quick-chips mx-auto mb-5" id="searchQuickChips" role="group" aria-label="Búsquedas rápidas">
+      <span class="search-quick-chips__label">Sugerencias:</span>
+      <button type="button" class="search-chip" data-search-chip="Corsets">Corsets</button>
+      <button type="button" class="search-chip" data-search-chip="Blanco">Blanco</button>
+      <button type="button" class="search-chip" data-search-chip="Noir">Noir</button>
+      <button type="button" class="search-chip" data-search-chip="Denim">Denim</button>
+      <button type="button" class="search-chip" data-search-chip="Vestidos">Vestidos</button>
     </div>
 
     <div id="searchResultsWrap">
@@ -503,6 +525,19 @@
         <a class="btn btn-osm btn-gold w-100" href="#" target="_blank" rel="noopener noreferrer" id="whatsappConciergeBtn">
           <i class="bi bi-whatsapp me-2"></i>Finalizar pedido vía WhatsApp
         </a>
+      </div>
+
+      <div class="my-orders-card mb-4 d-none" id="myOrdersTrackingSection">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <div>
+            <div class="eyebrow mb-1"><span>HISTORIAL DE COMPRAS</span></div>
+            <h3 class="summary-title mb-0 border-0 pb-0">Mis Pedidos</h3>
+          </div>
+          <button type="button" class="osm-btn osm-btn--sm" id="refreshMyOrdersBtn">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Actualizar</span>
+          </button>
+        </div>
+        <div id="trackingMyOrdersList" class="customer-orders-list"></div>
       </div>
 
       <div class="track-form mb-4">
@@ -584,6 +619,11 @@
             <button class="btn btn-osm btn-dark w-100 mt-4" type="submit" id="loginBtn">Iniciar Sesión</button>
           </form>
           <a class="account-forgot" href="#" id="forgotLink">Olvidé mi contraseña</a>
+
+          <div id="googleOAuthSection" class="google-auth-wrap d-none">
+            <div class="google-auth-divider"><span>o continúa con</span></div>
+            <div id="googleSignInButton" class="google-btn-host" aria-label="Continuar con Google"></div>
+          </div>
         </div>
 
         <!-- Formulario de Auto-registro de Clienta (RF-SEG-007) -->
@@ -608,9 +648,39 @@
               <label for="regTelefono">Teléfono</label>
               <input type="tel" id="regTelefono" name="telefono" autocomplete="tel">
             </div>
+            <div class="row g-3">
+              <div class="col-sm-5">
+                <div class="uline-field">
+                  <label for="regTipoDocumento">Tipo de documento</label>
+                  <select id="regTipoDocumento" name="tipo_documento">
+                    <option value="">Seleccionar (opcional)</option>
+                    <option value="CC">Cédula de Ciudadanía (CC)</option>
+                    <option value="CE">Cédula de Extranjería (CE)</option>
+                    <option value="TI">Tarjeta de Identidad (TI)</option>
+                    <option value="Pasaporte">Pasaporte</option>
+                  </select>
+                </div>
+              </div>
+              <div class="col-sm-7">
+                <div class="uline-field">
+                  <label for="regDocumento">Número de documento</label>
+                  <input type="text" id="regDocumento" name="documento" maxlength="30" autocomplete="off" placeholder="Ej. 1012345678">
+                </div>
+              </div>
+            </div>
+            <div class="uline-field">
+              <label for="regDireccion">Dirección de despacho</label>
+              <input type="text" id="regDireccion" name="direccion" maxlength="255" autocomplete="street-address" placeholder="Calle 93 # 12-54, Apto 402">
+            </div>
             <div class="uline-field">
               <label for="regPassword">Contraseña (mín. 8 caracteres)</label>
               <input type="password" id="regPassword" name="contrasena" autocomplete="new-password" minlength="8" required>
+              <ul class="pwd-hint-list" id="regPwdHints" aria-live="polite">
+                <li class="pwd-hint-item" data-pwd-rule="length">Mínimo 8 caracteres</li>
+                <li class="pwd-hint-item" data-pwd-rule="upper">1 mayúscula (A–Z)</li>
+                <li class="pwd-hint-item" data-pwd-rule="lower">1 minúscula (a–z)</li>
+                <li class="pwd-hint-item" data-pwd-rule="digit">1 número (0–9)</li>
+              </ul>
             </div>
             <div class="uline-field">
               <label for="regPassword2">Confirma la Contraseña</label>
@@ -653,6 +723,19 @@
         </div>
 
         <div class="accordion accordion-flush" id="faqAccordion"></div>
+
+        <div class="my-tickets-card mt-4 d-none" id="myTicketsHelpSection">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div>
+              <div class="eyebrow mb-1"><span>ATENCIÓN AL CLIENTE</span></div>
+              <h3 class="summary-title mb-0 border-0 pb-0">Mis Tickets y Solicitudes</h3>
+            </div>
+            <button type="button" class="osm-btn osm-btn--sm" id="refreshMyTicketsBtn">
+              <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Actualizar</span>
+            </button>
+          </div>
+          <div id="helpMyTicketsList" class="customer-orders-list"></div>
+        </div>
       </div>
 
       <div class="col-lg-5">
@@ -745,9 +828,35 @@
               <span class="adm-nav__count d-none" id="admNavAlertsBadge">0</span>
             </a>
           </li>
+          <li id="admNavMaestrosItem" class="d-none">
+            <a href="#/admin/maestros" data-adm-nav="maestros">
+              <i class="bi bi-sliders"></i><span>Atributos y Categorías</span>
+            </a>
+          </li>
           <li>
             <a href="#/admin/perfil" data-adm-nav="perfil">
               <i class="bi bi-person-gear"></i><span>Mi Cuenta y Clave</span>
+            </a>
+          </li>
+          <li id="admNavPersonalItem" class="d-none">
+            <a href="#/admin/personal" data-adm-nav="personal">
+              <i class="bi bi-people"></i><span>Personal Operativo</span>
+            </a>
+          </li>
+          <li id="admNavFaqsItem" class="d-none">
+            <a href="#/admin/faqs" data-adm-nav="faqs">
+              <i class="bi bi-question-circle"></i><span>Preguntas Frecuentes</span>
+            </a>
+          </li>
+          <li id="admNavReportesItem" class="d-none">
+            <a href="#/admin/reportes" data-adm-nav="reportes">
+              <i class="bi bi-bar-chart-line"></i><span>Reportes Vendedoras</span>
+            </a>
+          </li>
+          <li id="admNavSoporteItem" class="d-none">
+            <a href="#/admin/soporte" data-adm-nav="soporte">
+              <i class="bi bi-shield-check"></i><span>Soporte y Auditoría</span>
+              <span class="adm-nav__count d-none" id="admNavTicketsBadge">0</span>
             </a>
           </li>
         </ul>
@@ -932,7 +1041,7 @@
               <select class="osm-select" id="admCatFilterState" aria-label="Filtrar por visibilidad">
                 <option value="">Todos los estados</option>
                 <option value="activo">Visibles</option>
-                <option value="oculto">Ocultos</option>
+                <option value="inactivo">Ocultos</option>
               </select>
             </div>
 
@@ -945,7 +1054,7 @@
                     <th>Precio Base</th>
                     <th>Stock Total</th>
                     <th>Visibilidad</th>
-                    <th class="t-right">Variantes</th>
+                    <th class="t-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="admCatalogBody"></tbody>
@@ -1043,6 +1152,12 @@
                   <div class="osm-field">
                     <label class="osm-label" for="admPwdNew">Nueva contraseña (mín. 8 caracteres)</label>
                     <input type="password" class="osm-input" id="admPwdNew" name="nueva_password" autocomplete="new-password" required>
+                    <ul class="pwd-hint-list" id="admPwdHints" aria-live="polite">
+                      <li class="pwd-hint-item" data-pwd-rule="length">Mínimo 8 caracteres</li>
+                      <li class="pwd-hint-item" data-pwd-rule="upper">1 mayúscula (A–Z)</li>
+                      <li class="pwd-hint-item" data-pwd-rule="lower">1 minúscula (a–z)</li>
+                      <li class="pwd-hint-item" data-pwd-rule="digit">1 número (0–9)</li>
+                    </ul>
                   </div>
                   <div class="osm-field">
                     <label class="osm-label" for="admPwdConfirm">Confirmar nueva contraseña</label>
@@ -1052,6 +1167,348 @@
                     Actualizar Contraseña
                   </button>
                 </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Subpanel: Soporte y Auditoría (Exclusivo Administradora) -->
+        <div class="adm-panel" id="adm-panel-soporte">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>SEGURIDAD Y ATENCIÓN AL CLIENTE</span></div>
+              <h1 class="adm-title">Soporte y Auditoría</h1>
+              <p class="adm-sub">Gestiona tickets con máquina de estados y consulta logs inmutables de precios, stock y pedidos.</p>
+            </div>
+          </div>
+
+          <div class="adm-tabs" id="admSoporteTabs" role="tablist" aria-label="Secciones de Soporte y Auditoría">
+            <button type="button" class="adm-tab active" data-soporte-tab="tickets" role="tab" aria-selected="true">
+              Tickets de Soporte <span class="osm-badge osm-badge--gold ms-1" id="admTicketsTabCount">0</span>
+            </button>
+            <button type="button" class="adm-tab" data-soporte-tab="auditoria" role="tab" aria-selected="false">
+              Logs de Auditoría
+            </button>
+          </div>
+
+          <div id="admSoporteTabTickets">
+            <div class="osm-card">
+              <div class="adm-toolbar">
+                <select class="osm-select" id="admTicketStateFilter" aria-label="Filtrar tickets por estado">
+                  <option value="">Todos los estados</option>
+                  <option value="ABIERTO">Abiertos</option>
+                  <option value="EN_PROCESO">En Proceso</option>
+                  <option value="RESUELTO">Resueltos</option>
+                </select>
+                <button type="button" class="osm-btn osm-btn--sm ms-auto" id="admRefreshTicketsBtn">
+                  <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualizar Tickets
+                </button>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Ticket / Fecha</th>
+                      <th>Clienta / Contacto</th>
+                      <th>Asunto</th>
+                      <th>Orden</th>
+                      <th>Estado</th>
+                      <th class="t-right">Gestión</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admTicketsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="admSoporteTabAuditoria" class="d-none">
+            <div class="osm-card">
+              <div class="adm-toolbar">
+                <div class="adm-search">
+                  <i class="bi bi-search" aria-hidden="true"></i>
+                  <input type="search" class="osm-input" id="admAuditSearch" placeholder="Filtrar por usuario, entidad, acción o detalle…">
+                </div>
+                <select class="osm-select" id="admAuditTableFilter" aria-label="Filtrar por entidad afectada">
+                  <option value="">Todas las entidades</option>
+                </select>
+                <select class="osm-select" id="admAuditActionFilter" aria-label="Filtrar por acción">
+                  <option value="">Todas las acciones</option>
+                </select>
+                <input type="date" class="osm-input adm-date-input" id="admAuditDateFrom" aria-label="Fecha inicio auditoría">
+                <input type="date" class="osm-input adm-date-input" id="admAuditDateTo" aria-label="Fecha fin auditoría">
+                <button type="button" class="osm-btn osm-btn--sm" id="admRefreshAuditBtn">
+                  <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualizar
+                </button>
+                <button type="button" class="osm-btn osm-btn--sm osm-btn--gold" id="admExportAuditCsvBtn">
+                  <i class="bi bi-download" aria-hidden="true"></i> Exportar CSV
+                </button>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha y Hora</th>
+                      <th>Usuario</th>
+                      <th>Acción</th>
+                      <th>IP / Dispositivo</th>
+                      <th>Entidad / ID</th>
+                      <th>Cambio Registrado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admAuditBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. Subpanel: Gestión de Personal Operativo (Exclusivo Administradora / RF-SEG-012 a 015) -->
+        <div class="adm-panel" id="adm-panel-personal">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>CONTROL DE ACCESO Y ROLES</span></div>
+              <h1 class="adm-title">Personal Operativo</h1>
+              <p class="adm-sub">Registra vendedoras o administradoras, cambia roles y aplica baja lógica o reactivación sin borrar historial.</p>
+            </div>
+            <button type="button" class="osm-btn osm-btn--gold" id="admOpenNewStaffBtn">
+              <i class="bi bi-person-plus" aria-hidden="true"></i> Nuevo Personal
+            </button>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-toolbar">
+              <div class="adm-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" class="osm-input" id="admStaffSearch" placeholder="Buscar por nombre, correo o teléfono…">
+              </div>
+              <select class="osm-select" id="admStaffRoleFilter" aria-label="Filtrar personal por rol">
+                <option value="">Todos los roles</option>
+                <option value="Administradora">Administradora</option>
+                <option value="Vendedora">Vendedora</option>
+              </select>
+              <button type="button" class="osm-btn osm-btn--sm" id="admRefreshStaffBtn">
+                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualizar
+              </button>
+            </div>
+
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Nombre y Teléfono</th>
+                    <th>Correo</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th class="t-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="admStaffBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. Subpanel: Gestión de Preguntas Frecuentes (Exclusivo Administradora / RF-FAQ-005..010) -->
+        <div class="adm-panel" id="adm-panel-faqs">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>CENTRO DE AYUDA PÚBLICO</span></div>
+              <h1 class="adm-title">Preguntas Frecuentes (FAQs)</h1>
+              <p class="adm-sub">Crea, edita, reordena y activa o desactiva las respuestas visibles en #/ayuda.</p>
+            </div>
+            <button type="button" class="osm-btn osm-btn--gold" id="admOpenNewFaqBtn">
+              <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva FAQ
+            </button>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-toolbar">
+              <div class="adm-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input type="search" class="osm-input" id="admFaqSearch" placeholder="Buscar por pregunta, respuesta o categoría…">
+              </div>
+              <select class="osm-select" id="admFaqCatFilter" aria-label="Filtrar FAQs por categoría">
+                <option value="">Todas las categorías</option>
+              </select>
+              <select class="osm-select" id="admFaqStateFilter" aria-label="Filtrar FAQs por estado">
+                <option value="">Todos los estados</option>
+                <option value="activo">Activas</option>
+                <option value="inactivo">Inactivas</option>
+              </select>
+              <button type="button" class="osm-btn osm-btn--sm" id="admRefreshFaqsBtn">
+                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Actualizar
+              </button>
+            </div>
+
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Orden</th>
+                    <th>Pregunta y Respuesta</th>
+                    <th>Categoría</th>
+                    <th>Estado</th>
+                    <th class="t-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="admFaqsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 9. Subpanel: Reportes por Vendedora con Filtro de Fechas y CSV (Exclusivo Administradora / RF-PED-004) -->
+        <div class="adm-panel" id="adm-panel-reportes">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>INDICADORES COMERCIALES OMS</span></div>
+              <h1 class="adm-title">Reportes por Vendedora</h1>
+              <p class="adm-sub">Consulta desempeño por rango de fechas y exporta datos protegidos a CSV.</p>
+            </div>
+            <button type="button" class="osm-btn osm-btn--gold" id="admRepExportCsvBtn">
+              <i class="bi bi-download" aria-hidden="true"></i> Exportar CSV
+            </button>
+          </div>
+
+          <div class="adm-report-kpis">
+            <div class="osm-card adm-kpi">
+              <p class="adm-kpi__label">Pedidos en Rango</p>
+              <p class="adm-kpi__value" id="admRepTotalOrders">0</p>
+              <p class="adm-kpi__meta">Incluye filtros aplicados</p>
+            </div>
+            <div class="osm-card adm-kpi adm-kpi--gold">
+              <p class="adm-kpi__label">Total Vendido</p>
+              <p class="adm-kpi__value" id="admRepTotalRevenue">$0 COP</p>
+              <p class="adm-kpi__meta">Excluye pedidos cancelados</p>
+            </div>
+            <div class="osm-card adm-kpi">
+              <p class="adm-kpi__label">Vendedoras con Actividad</p>
+              <p class="adm-kpi__value" id="admRepSellersCount">0</p>
+              <p class="adm-kpi__meta">Resumen consolidado del periodo</p>
+            </div>
+          </div>
+
+          <div class="osm-card">
+            <div class="adm-toolbar">
+              <input type="date" class="osm-input adm-date-input" id="admRepDateFrom" aria-label="Fecha inicio reporte">
+              <input type="date" class="osm-input adm-date-input" id="admRepDateTo" aria-label="Fecha fin reporte">
+              <select class="osm-select" id="admRepStateFilter" aria-label="Filtrar reporte por estado">
+                <option value="">Todos los estados</option>
+                <option value="Registrado">Registrado</option>
+                <option value="Confirmado">Confirmado</option>
+                <option value="En Empaque">En Empaque</option>
+                <option value="Despachado">Despachado</option>
+                <option value="Entregado">Entregado</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+              <button type="button" class="osm-btn osm-btn--sm osm-btn--primary" id="admRepApplyBtn">
+                <i class="bi bi-funnel" aria-hidden="true"></i> Aplicar
+              </button>
+              <button type="button" class="osm-btn osm-btn--sm" id="admRepClearBtn">Limpiar</button>
+            </div>
+
+            <div class="adm-table-wrap">
+              <table class="adm-table">
+                <thead>
+                  <tr>
+                    <th>Vendedora</th>
+                    <th>Correo / Rol</th>
+                    <th>Estado</th>
+                    <th>Pedidos</th>
+                    <th>Total Vendido</th>
+                    <th>Detalle por Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="admReportsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 10. Subpanel: Atributos y Categorías Maestras (Exclusivo Administradora / RF-CAT-008..016) -->
+        <div class="adm-panel" id="adm-panel-maestros">
+          <div class="adm-head">
+            <div>
+              <div class="eyebrow mb-1"><span>CATÁLOGOS MAESTROS E INTEGRIDAD REFERENCIAL</span></div>
+              <h1 class="adm-title">Atributos y Categorías</h1>
+              <p class="adm-sub">Administra categorías, tallas y colores maestros reflejados de inmediato en #/admin/catalogo.</p>
+            </div>
+          </div>
+
+          <div class="adm-tabs" id="admMaestrosTabs" role="tablist" aria-label="Tablas maestras del catálogo">
+            <button type="button" class="adm-tab active" data-maestro-tab="categorias" role="tab" aria-selected="true">Categorías</button>
+            <button type="button" class="adm-tab" data-maestro-tab="tallas" role="tab" aria-selected="false">Tallas</button>
+            <button type="button" class="adm-tab" data-maestro-tab="colores" role="tab" aria-selected="false">Colores</button>
+          </div>
+
+          <div id="admMaestrosTabCategorias">
+            <div class="osm-card">
+              <div class="adm-toolbar">
+                <button type="button" class="osm-btn osm-btn--gold ms-auto" id="admOpenNewCatBtn">
+                  <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva Categoría
+                </button>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Categoría</th>
+                      <th>Descripción</th>
+                      <th>Prendas</th>
+                      <th>Estado</th>
+                      <th class="t-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admMasterCatsBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="admMaestrosTabTallas" class="d-none">
+            <div class="osm-card">
+              <div class="adm-toolbar">
+                <button type="button" class="osm-btn osm-btn--gold ms-auto" id="admOpenNewSizeBtn">
+                  <i class="bi bi-plus-lg" aria-hidden="true"></i> Nueva Talla
+                </button>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Talla</th>
+                      <th>Variantes</th>
+                      <th>Estado</th>
+                      <th class="t-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admMasterSizesBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="admMaestrosTabColores" class="d-none">
+            <div class="osm-card">
+              <div class="adm-toolbar">
+                <button type="button" class="osm-btn osm-btn--gold ms-auto" id="admOpenNewColorBtn">
+                  <i class="bi bi-plus-lg" aria-hidden="true"></i> Nuevo Color
+                </button>
+              </div>
+              <div class="adm-table-wrap">
+                <table class="adm-table">
+                  <thead>
+                    <tr>
+                      <th>Color</th>
+                      <th>Tono / HEX</th>
+                      <th>Variantes</th>
+                      <th>Estado</th>
+                      <th class="t-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admMasterColorsBody"></tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1247,6 +1704,12 @@
         <div class="uline-field">
           <label for="recNewPassword">Nueva contraseña (mín. 8 caracteres)</label>
           <input type="password" id="recNewPassword" name="nueva_password" minlength="8" required>
+          <ul class="pwd-hint-list" id="recPwdHints" aria-live="polite">
+            <li class="pwd-hint-item" data-pwd-rule="length">Mínimo 8 caracteres</li>
+            <li class="pwd-hint-item" data-pwd-rule="upper">1 mayúscula (A–Z)</li>
+            <li class="pwd-hint-item" data-pwd-rule="lower">1 minúscula (a–z)</li>
+            <li class="pwd-hint-item" data-pwd-rule="digit">1 número (0–9)</li>
+          </ul>
         </div>
         <button type="submit" class="btn btn-osm btn-gold w-100" id="confirmResetBtn">Restablecer Contraseña</button>
       </form>
@@ -1256,32 +1719,73 @@
 
 <!-- ============================= MODAL MI PERFIL (RF-SEG-010 / RF-SEG-011) ============================= -->
 <div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content qv-content p-4">
       <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      <h3 class="section-title mb-3">Mi Perfil</h3>
-      <div class="alert alert-danger py-2 small d-none" id="profileError"></div>
-      <div class="alert alert-success py-2 small d-none" id="profileSuccess"></div>
+      <h3 class="section-title mb-3">Mi Perfil y Pedidos</h3>
 
-      <form id="profileForm" novalidate>
-        <div class="uline-field">
-          <label for="profNombre">Nombre</label>
-          <input type="text" id="profNombre" name="nombre" required>
-        </div>
-        <div class="uline-field">
-          <label for="profApellido">Apellido</label>
-          <input type="text" id="profApellido" name="apellido" required>
-        </div>
-        <div class="uline-field">
-          <label for="profEmail">Correo electrónico</label>
-          <input type="email" id="profEmail" name="email" required>
-        </div>
-        <div class="uline-field">
-          <label for="profTelefono">Teléfono</label>
-          <input type="tel" id="profTelefono" name="telefono">
-        </div>
-        <button type="submit" class="btn btn-osm btn-gold w-100" id="saveProfileBtn">Actualizar Perfil</button>
-      </form>
+      <div class="profile-tabs" id="profileModalTabs" role="tablist" aria-label="Opciones de cuenta">
+        <button type="button" class="profile-tab active" data-profile-tab="datos" role="tab" aria-selected="true">Mis Datos</button>
+        <button type="button" class="profile-tab" data-profile-tab="pedidos" role="tab" aria-selected="false">Mis Pedidos</button>
+        <button type="button" class="profile-tab" data-profile-tab="tickets" role="tab" aria-selected="false">Mis Tickets</button>
+      </div>
+
+      <div id="profileTabDatos">
+        <div class="alert alert-danger py-2 small d-none" id="profileError"></div>
+        <div class="alert alert-success py-2 small d-none" id="profileSuccess"></div>
+
+        <form id="profileForm" novalidate>
+          <div class="uline-field">
+            <label for="profNombre">Nombre</label>
+            <input type="text" id="profNombre" name="nombre" required>
+          </div>
+          <div class="uline-field">
+            <label for="profApellido">Apellido</label>
+            <input type="text" id="profApellido" name="apellido" required>
+          </div>
+          <div class="uline-field">
+            <label for="profEmail">Correo electrónico</label>
+            <input type="email" id="profEmail" name="email" required>
+          </div>
+          <div class="uline-field">
+            <label for="profTelefono">Teléfono</label>
+            <input type="tel" id="profTelefono" name="telefono">
+          </div>
+          <div class="row g-3">
+            <div class="col-sm-5">
+              <div class="uline-field">
+                <label for="profTipoDocumento">Tipo de documento</label>
+                <select id="profTipoDocumento" name="tipo_documento">
+                  <option value="">Seleccionar (opcional)</option>
+                  <option value="CC">Cédula de Ciudadanía (CC)</option>
+                  <option value="CE">Cédula de Extranjería (CE)</option>
+                  <option value="TI">Tarjeta de Identidad (TI)</option>
+                  <option value="Pasaporte">Pasaporte</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-sm-7">
+              <div class="uline-field">
+                <label for="profDocumento">Número de documento</label>
+                <input type="text" id="profDocumento" name="documento" maxlength="30" autocomplete="off" placeholder="Número de documento">
+              </div>
+            </div>
+          </div>
+          <div class="uline-field">
+            <label for="profDireccion">Dirección de despacho predeterminada</label>
+            <input type="text" id="profDireccion" name="direccion" maxlength="255" autocomplete="street-address" placeholder="Calle 93 # 12-54, Apto 402">
+          </div>
+          <button type="submit" class="btn btn-osm btn-gold w-100" id="saveProfileBtn">Actualizar Perfil</button>
+        </form>
+      </div>
+
+      <div id="profileTabPedidos" class="d-none">
+        <div id="profileOrdersList" class="customer-orders-list"></div>
+      </div>
+
+      <div id="profileTabTickets" class="d-none">
+        <div id="profileTicketsList" class="customer-orders-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1345,6 +1849,33 @@
   <div class="adm-drawer-foot" id="admDrawerOrderFoot"></div>
 </div>
 
+<!-- ============================= DRAWER DETALLE DE TICKET DE SOPORTE (#admTicketDrawer) ============================= -->
+<div class="offcanvas offcanvas-end adm-drawer" tabindex="-1" id="admTicketDrawer">
+  <div class="offcanvas-header border-bottom">
+    <div class="d-flex align-items-center gap-2">
+      <h5 class="offcanvas-title mb-0" id="admDrawerTicketTitle">Ticket #1</h5>
+      <span id="admDrawerTicketBadge"></span>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Cerrar"></button>
+  </div>
+  <div class="offcanvas-body" id="admDrawerTicketBody"></div>
+  <div class="adm-drawer-foot" id="admDrawerTicketFoot">
+    <form id="admTicketReplyForm" class="adm-ticket-form w-100" novalidate>
+      <div class="osm-field mb-2">
+        <label class="osm-label" for="admTicketReplyText">Respuesta de Soporte</label>
+        <textarea class="osm-textarea" id="admTicketReplyText" name="respuesta" rows="3" placeholder="Escribe una respuesta clara y respetuosa para la clienta…"></textarea>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" class="osm-btn osm-btn--primary" id="admTicketSaveReplyBtn">Guardar Respuesta</button>
+        <button type="button" class="osm-btn osm-btn--gold" id="admTicketTransitionBtn">Pasar a En Proceso</button>
+        <button type="button" class="osm-btn d-none" id="admTicketPublishFaqBtn">
+          <i class="bi bi-journal-plus" aria-hidden="true"></i> Publicar como FAQ
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ============================= MODAL NUEVA PRENDA (#admProductModal) ============================= -->
 <div class="modal fade" id="admProductModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1370,8 +1901,9 @@
             <input type="number" min="1000" step="1000" class="osm-input" id="admProdPrecio" name="precio_base" placeholder="145000" required>
           </div>
           <div class="col-md-6 osm-field mb-0">
-            <label class="osm-label" for="admProdImg">Ruta de imagen (opcional)</label>
-            <input type="text" class="osm-input" id="admProdImg" name="imagen_url" placeholder="img/corset-canela.jpg">
+            <label class="osm-label" for="admProdImagesInput">Imágenes de la prenda (1..N)</label>
+            <input type="file" class="osm-input" id="admProdImagesInput" name="imagenes" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple>
+            <div class="adm-gallery-pending" id="admNewProdImgPreview"></div>
           </div>
           <div class="col-md-4 osm-field mb-0">
             <label class="osm-label" for="admProdSku">SKU inicial</label>
@@ -1434,6 +1966,222 @@
         <div class="d-flex justify-content-end gap-2 mt-3">
           <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="osm-btn osm-btn--gold" id="admSaveVariantBtn">Guardar Variante</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL EDITAR PRENDA (#admEditProductModal) ============================= -->
+<div class="modal fade" id="admEditProductModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1">Editar Prenda</h3>
+      <p class="text-muted small mb-3" id="admEditProdSubtitle">Actualiza los datos principales visibles en el catálogo.</p>
+      <form id="admEditProductForm" novalidate>
+        <div class="row g-3">
+          <div class="col-md-8 osm-field mb-0">
+            <label class="osm-label" for="admEditProdNombre">Nombre de la prenda</label>
+            <input type="text" class="osm-input" id="admEditProdNombre" name="nombre_producto" required>
+          </div>
+          <div class="col-md-4 osm-field mb-0">
+            <label class="osm-label" for="admEditProdCategoria">Categoría activa</label>
+            <select class="osm-select" id="admEditProdCategoria" name="fk_id_categoria" required></select>
+          </div>
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admEditProdDesc">Descripción</label>
+            <textarea class="osm-textarea" id="admEditProdDesc" name="descripcion_producto" rows="3" required></textarea>
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admEditProdPrecio">Precio base (COP)</label>
+            <input type="number" min="1" step="100" class="osm-input" id="admEditProdPrecio" name="precio_detallista" required>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveEditProductBtn">Guardar Cambios</button>
+        </div>
+      </form>
+
+      <div class="adm-gallery-box d-none" id="admEditGallerySection">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <div>
+            <h4 class="adm-section-title mt-0 mb-0">Galería de Imágenes (1..N)</h4>
+            <p class="text-muted small mb-0">Sube hasta 10 imágenes (JPG, PNG, WEBP máx. 5 MB), define la portada y reordena.</p>
+          </div>
+          <button type="button" class="osm-btn osm-btn--sm osm-btn--primary" id="admUploadGalleryBtn">
+            <i class="bi bi-cloud-upload" aria-hidden="true"></i> Subir Seleccionadas
+          </button>
+        </div>
+        <div class="osm-field mb-2">
+          <input type="file" class="osm-input" id="admEditGalleryInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple>
+          <div class="adm-gallery-pending" id="admEditGalleryPending"></div>
+        </div>
+        <div class="adm-gallery-grid" id="admEditGalleryList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL NUEVO PERSONAL OPERATIVO (#admStaffModal) ============================= -->
+<div class="modal fade" id="admStaffModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1">Registrar Personal Operativo</h3>
+      <p class="text-muted small mb-3">Asigna acceso al panel operativo con rol Vendedora o Administradora.</p>
+      <form id="admStaffForm" novalidate>
+        <div class="row g-3">
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admStaffNombre">Nombre</label>
+            <input type="text" class="osm-input" id="admStaffNombre" name="nombre" required>
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admStaffApellido">Apellido</label>
+            <input type="text" class="osm-input" id="admStaffApellido" name="apellido" required>
+          </div>
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admStaffEmail">Correo institucional</label>
+            <input type="email" class="osm-input" id="admStaffEmail" name="email" placeholder="nombre@onestylemariana.co" required>
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admStaffTelefono">Teléfono (opcional)</label>
+            <input type="tel" class="osm-input" id="admStaffTelefono" name="telefono" placeholder="3001234567">
+          </div>
+          <div class="col-md-6 osm-field mb-0">
+            <label class="osm-label" for="admStaffRol">Rol operativo</label>
+            <select class="osm-select" id="admStaffRol" name="rol" required>
+              <option value="Vendedora">Vendedora</option>
+              <option value="Administradora">Administradora</option>
+            </select>
+          </div>
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admStaffPassword">Contraseña inicial</label>
+            <input type="password" class="osm-input" id="admStaffPassword" name="contrasena" autocomplete="new-password" required>
+            <ul class="pwd-hint-list" id="admStaffPwdHints" aria-live="polite">
+              <li class="pwd-hint-item" data-pwd-rule="length">Mínimo 8 caracteres</li>
+              <li class="pwd-hint-item" data-pwd-rule="upper">1 mayúscula (A–Z)</li>
+              <li class="pwd-hint-item" data-pwd-rule="lower">1 minúscula (a–z)</li>
+              <li class="pwd-hint-item" data-pwd-rule="digit">1 número (0–9)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveStaffBtn">Registrar Personal</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODAL CREAR / EDITAR FAQ (#admFaqModal) ============================= -->
+<div class="modal fade" id="admFaqModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1" id="admFaqModalTitle">Nueva Pregunta Frecuente</h3>
+      <p class="text-muted small mb-3">Configura pregunta, respuesta, categoría temática y prioridad en #/ayuda.</p>
+
+      <div class="adm-faq-privacy-alert d-none" id="admFaqPrivacyNotice" role="alert">
+        <strong>Revisión de privacidad requerida:</strong> estás convirtiendo un ticket de soporte en FAQ pública. Elimina nombres, correos, teléfonos o códigos de pedido de la clienta antes de guardar.
+      </div>
+
+      <form id="admFaqForm" novalidate>
+        <div class="row g-3">
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admFaqPregunta">Pregunta frecuente</label>
+            <input type="text" class="osm-input" id="admFaqPregunta" name="pregunta" placeholder="Ej. ¿Cómo solicito cambio de talla?" required>
+          </div>
+          <div class="col-md-8 osm-field mb-0">
+            <label class="osm-label" for="admFaqCategoria">Categoría temática</label>
+            <select class="osm-select" id="admFaqCategoria" name="id_categoria" required></select>
+          </div>
+          <div class="col-md-4 osm-field mb-0">
+            <label class="osm-label" for="admFaqOrden">Orden / Prioridad</label>
+            <input type="number" min="1" step="1" class="osm-input" id="admFaqOrden" name="orden" value="1" required>
+          </div>
+          <div class="col-12 osm-field mb-0">
+            <label class="osm-label" for="admFaqRespuesta">Respuesta pública</label>
+            <textarea class="osm-textarea" id="admFaqRespuesta" name="respuesta" rows="4" placeholder="Escribe una respuesta clara y útil…" required></textarea>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveFaqBtn">Guardar FAQ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================= MODALES CATÁLOGOS MAESTROS ============================= -->
+<div class="modal fade" id="admMasterCatModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1" id="admMasterCatModalTitle">Nueva Categoría</h3>
+      <p class="text-muted small mb-3">Las categorías activas se sincronizan con #/admin/catalogo y la tienda.</p>
+      <form id="admMasterCatForm" novalidate>
+        <div class="osm-field">
+          <label class="osm-label" for="admMasterCatNombre">Nombre de la categoría</label>
+          <input type="text" class="osm-input" id="admMasterCatNombre" name="nombre_categoria" placeholder="Ej. Chaquetas Importadas" required>
+        </div>
+        <div class="osm-field">
+          <label class="osm-label" for="admMasterCatDesc">Descripción</label>
+          <textarea class="osm-textarea" id="admMasterCatDesc" name="descripcion_categoria" rows="2" placeholder="Descripción breve de la línea"></textarea>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveMasterCatBtn">Guardar Categoría</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="admMasterSizeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1" id="admMasterSizeModalTitle">Nueva Talla</h3>
+      <p class="text-muted small mb-3">Define la nomenclatura de talla disponible para variantes.</p>
+      <form id="admMasterSizeForm" novalidate>
+        <div class="osm-field">
+          <label class="osm-label" for="admMasterSizeNombre">Nombre de la talla</label>
+          <input type="text" class="osm-input" id="admMasterSizeNombre" name="nombre_talla" placeholder="Ej. XS" required>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveMasterSizeBtn">Guardar Talla</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="admMasterColorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content qv-content p-4">
+      <button type="button" class="btn-close qv-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      <h3 class="section-title mb-1" id="admMasterColorModalTitle">Nuevo Color</h3>
+      <p class="text-muted small mb-3">Selecciona el tono hexadecimal y su nombre comercial.</p>
+      <form id="admMasterColorForm" novalidate>
+        <div class="osm-field">
+          <label class="osm-label" for="admMasterColorNombre">Nombre del color</label>
+          <input type="text" class="osm-input" id="admMasterColorNombre" name="nombre_color" placeholder="Ej. Azul Zafiro" required>
+        </div>
+        <div class="osm-field">
+          <label class="osm-label" for="admColorHexInput">Código hexadecimal (#RRGGBB)</label>
+          <div class="adm-color-picker-row">
+            <input type="color" class="adm-color-picker-input" id="admColorHexPicker" value="#17140F" aria-label="Selector visual de color">
+            <input type="text" class="osm-input" id="admColorHexInput" name="codigo_hex" value="#17140F" placeholder="#17140F" required>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="osm-btn" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="osm-btn osm-btn--gold" id="admSaveMasterColorBtn">Guardar Color</button>
         </div>
       </form>
     </div>
